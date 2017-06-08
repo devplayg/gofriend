@@ -37,12 +37,12 @@ GetOptions (
     "r=s" => \$report_file
 );
 if ( ! $src_dir || ! $dst_dir ) {
-    print "Description : File Incremental Backup Manager $version\n";
-    print "Usage       : backup.pl -s[=SOURCE] -d[=DEST] [-v, verbose] [-r[=report_filepath]] \n";
-    print "Example     : backup.pl -s=/backup/current -d=/backup/20170601\n";
-    print "Example     : backup.pl -s=/backup/current -d=/backup/20170601 -v\n";
-    print "Example     : backup.pl -s=/backup/current -d=/backup/20170601 -r=/home/report/report.log\n";
-    print "Daily Job   : 5 0 * * * /root/backup.pl -s=/backup/current -d=/backup/\$(date +\\%Y\\%m\\%d) /dev/null 2>&1\n";
+    print "Description : File Incremental Backup Manager $version", "\n";
+    print "Usage       : backup.pl -s[=SOURCE] -d[=DEST] [-v, verbose] [-r[=report_filepath]]", "\n";
+    print "Example     : backup.pl -s=/backup/current -d=/backup/20170601", "\n";
+    print "Example     : backup.pl -s=/backup/current -d=/backup/20170601 -v", "\n";
+    print "Example     : backup.pl -s=/backup/current -d=/backup/20170601 -r=/home/report/report.log", "\n";
+    print "Daily Job   : 5 0 * * * /root/backup.pl -s=/backup/current -d=/backup/\$(date +\\%Y\\%m\\%d) /dev/null 2>&1", "\n";
     exit;
 }
 
@@ -92,14 +92,18 @@ sub generate_report {
 	my %old_data_sheet = read_file( "/tmp/backup_hash.old" );
     open( REPORT, ">>", $report_file );
 	my @diff;
+
+    # Deleted items
 	@diff = diff( \%old_data_sheet, \%new_data_sheet );
 	foreach ( @diff ) {
         if ( $verbose ) {
             print_ansi( "red", "[Deleted] " );
             print $_, "\n";
         }
-        printf( REPORT "%s\t[%s]\t%s\n",  $time_str, "deleted", $_);
+        printf( REPORT "%s\t[%s]\t%s\n",  $time_str, "deleted", $_ );
 	}
+
+    # Added items
 	@diff = diff( \%new_data_sheet, \%old_data_sheet );
 	foreach ( @diff ) {
         if ( $verbose ) {
@@ -108,9 +112,10 @@ sub generate_report {
         }
         my $mtime = ( stat ( $_ ) )[9];
         my $mtime_str = localtime( $mtime );
-        printf( REPORT "%s\t[%s]\t%s\n",  $mtime_str, "added", $_);
+        printf( REPORT "%s\t[%s]\t%s\n",  $mtime_str, "added", $_ );
 	}
     
+    # Modified items
     foreach ( @modified ) {
         next if ( ! $old_data_sheet{ $_  } );
         if ( $verbose ) {
@@ -120,11 +125,10 @@ sub generate_report {
         
         my $mtime = ( stat ( $_ ) )[9];
         my $mtime_str = localtime( $mtime );
-        printf( REPORT "%s\t[%s]\t%s\n",  $mtime_str, "modified", $_);
+        printf( REPORT "%s\t[%s]\t%s\n",  $mtime_str, "modified", $_ );
     } 
 
     close( REPORT );
-
 }
 
 
@@ -190,7 +194,7 @@ sub read_file {
     my %hash = ();
    
     if ( -e $fp ) {
-        open( READ, "<", $fp);
+        open( READ, "<", $fp );
         my @row = <READ>;
         chomp( @row );
         %hash = map { $_ => 1 } @row;
@@ -204,7 +208,7 @@ sub read_file {
 sub diff {
     my ( $h1, $h2 ) = @_;
     my @diff = ();
-	foreach (keys %$h1) {
+	foreach ( keys %$h1 ) {
 		push(@diff, $_) unless exists $$h2{$_};
 	}
     return @diff;

@@ -61,7 +61,7 @@ if ( ! -e $dst_dir ) {
 }
 
 
-# Set path of report log file 
+# Set path of report log file
 if ( ! $report_file ) {
     $report_file = "/tmp/report.log";
 }
@@ -70,12 +70,13 @@ die( $report_file . " is not a file\n" ) if ( -e $report_file and ! -f $report_f
 
 
 # Run
-find(\&do_differential_backup, ( $src_dir ) );
-find(\&touch_all_directories, ( $src_dir ) );
+find( \&do_differential_backup, ( $src_dir ) );
+find( \&touch_all_directories, ( $src_dir ) );
 generate_report();
 write_new_data_sheet_into_file();
 
 
+# Functions
 sub write_new_data_sheet_into_file {
     unlink $old_data_file if ( -e $old_data_file );
     open( WRITE, ">>", $old_data_file );
@@ -86,14 +87,13 @@ sub write_new_data_sheet_into_file {
 }
 
 
-# Functions
 sub generate_report {
     my $time_str = localtime( $now );
 	my %old_data_sheet = read_file( "/tmp/backup_hash.old" );
     open( REPORT, ">>", $report_file );
 	my @diff;
 
-    # Deleted items
+    # Write deleted items
 	@diff = diff( \%old_data_sheet, \%new_data_sheet );
 	foreach ( @diff ) {
         if ( $verbose ) {
@@ -103,7 +103,7 @@ sub generate_report {
         printf( REPORT "%s\t[%s]\t%s\n",  $time_str, "deleted", $_ );
 	}
 
-    # Added items
+    # Write added items
 	@diff = diff( \%new_data_sheet, \%old_data_sheet );
 	foreach ( @diff ) {
         if ( $verbose ) {
@@ -114,19 +114,19 @@ sub generate_report {
         my $mtime_str = localtime( $mtime );
         printf( REPORT "%s\t[%s]\t%s\n",  $mtime_str, "added", $_ );
 	}
-    
-    # Modified items
+
+    # Write modified items
     foreach ( @modified ) {
         next if ( ! $old_data_sheet{ $_  } );
         if ( $verbose ) {
             print_ansi( "green", "[Modified] " );
             print $_, "\n";
         }
-        
+
         my $mtime = ( stat ( $_ ) )[9];
         my $mtime_str = localtime( $mtime );
         printf( REPORT "%s\t[%s]\t%s\n",  $mtime_str, "modified", $_ );
-    } 
+    }
 
     close( REPORT );
 }
@@ -138,9 +138,8 @@ sub generate_report {
 sub do_differential_backup {
 
     if ( -f $File::Find::name ) {
-        $new_data_sheet{ $File::Find::name } = 1;
 
-        # Get last modified time
+        # Get the last modified time of the file
         my $mtime = ( stat ( $File::Find::name ) )[9];
 
         # Check time difference
@@ -158,6 +157,10 @@ sub do_differential_backup {
             utime $mtime, $mtime, $dirs . $filename;
             push @modified, $File::Find::name;
         }
+
+        # Fill new data sheet
+        $new_data_sheet{ $File::Find::name } = 1;
+
     } else {
         $new_data_sheet{ $File::Find::name . "/" } = 1;
     }
@@ -181,7 +184,7 @@ sub touch_all_directories {
         my $dir2 = $dir1;
         $dir2 =~ s|^$src_dir|$dst_dir|;
 
-        # Get last modified time
+        # Get the last modified time of the file
         my $mtime = ( stat ( $dir1 ) )[9];
         utime $mtime, $mtime, $dir2;
     }
@@ -192,7 +195,7 @@ sub touch_all_directories {
 sub read_file {
     my $fp = shift;
     my %hash = ();
-   
+
     if ( -e $fp ) {
         open( READ, "<", $fp );
         my @row = <READ>;
@@ -209,7 +212,7 @@ sub diff {
     my ( $h1, $h2 ) = @_;
     my @diff = ();
 	foreach ( keys %$h1 ) {
-		push(@diff, $_) unless exists $$h2{$_};
+		push( @diff, $_ ) unless exists $$h2{ $_ };
 	}
     return @diff;
 }

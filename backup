@@ -1,0 +1,10 @@
+/home/report.log
+{
+        daily
+        missingok
+        rotate 60
+        create 640 root root
+        notifempty
+        size 1k
+        daily
+}

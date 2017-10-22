@@ -117,6 +117,8 @@ func main() {
 	fs = flag.NewFlagSet("", flag.ExitOnError)
 	var (
 		searchDir = fs.String("d", "", "Source directory")
+		countToDisplay = fs.Int("c", 2, "Minimum count")
+		sortBy = fs.String("s", "size", "Sort by [size|count]")
 	)
 	fs.Usage = printHelp
 	fs.Parse(os.Args[1:])
@@ -150,32 +152,22 @@ func main() {
 	}
 	wg.Wait()
 
+
 	// Sort
 	vs := NewValSorter(fm.m)
 	vs.Sort()
 
+
+	// Print
 	for idx, _ := range vs.Keys {
-		if vs.Vals[idx].count > 1 {
+		if vs.Vals[idx].count >= *countToDisplay {
 			fmt.Printf("# total %-15d bytes, each %-15d bytes, %d files\n", vs.Vals[idx].totalSize, vs.Vals[idx].size, vs.Vals[idx].count)
 			for _, fn := range vs.Vals[idx].list {
 				fmt.Printf("\t%s\n", fn)
 			}
 		}
 	}
-
-	//// Calculate rank
-	//total := 0
-	//for k, v := range fm.m {
-	//	if v.count > 1 {
-	//		fmt.Printf("# %s, %d files, %d bytes\n", k, v.count, v.totalSize)
-	//		for _, fn := range v.list {
-	//			fmt.Printf("\t%s\n", fn)
-	//		}
-	//	}
-	//
-	//}
-	//log.Printf("Time: %s, Total: %d", time.Since(t1), total)
-
+	fmt.Printf("\n# Time: %s\n", time.Since(t1))
 }
 
 func printHelp() {

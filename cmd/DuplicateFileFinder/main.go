@@ -64,7 +64,7 @@ type File struct {
 	list      []string
 }
 
-func newFile(path string,size int64) *File {
+func newFile(path string, size int64) *File {
 	f := File{
 		list:      make([]string, 0, 10),
 		size:      size,
@@ -116,9 +116,9 @@ func main() {
 	// Set and check flags
 	fs = flag.NewFlagSet("", flag.ExitOnError)
 	var (
-		searchDir = fs.String("d", "", "Source directory")
+		searchDir      = fs.String("d", "", "Source directory")
 		countToDisplay = fs.Int("c", 2, "Minimum count")
-		sortBy = fs.String("s", "size", "Sort by [size|count]")
+		//		sortBy = fs.String("s", "size", "Sort by [size|count]")
 	)
 	fs.Usage = printHelp
 	fs.Parse(os.Args[1:])
@@ -152,11 +152,9 @@ func main() {
 	}
 	wg.Wait()
 
-
 	// Sort
 	vs := NewValSorter(fm.m)
 	vs.Sort()
-
 
 	// Print
 	for idx, _ := range vs.Keys {

@@ -76,8 +76,7 @@ func newFile(path string, size int64) *File {
 	return &f
 }
 
-// For sort
-
+// Sort structure
 type ValSorter struct {
 	Keys []string
 	Vals []*File
@@ -105,12 +104,14 @@ func (vs *ValSorter) Swap(i, j int) {
 	vs.Keys[i], vs.Keys[j] = vs.Keys[j], vs.Keys[i]
 }
 
-// Nain
+// Initialize
 func init() {
 	fm = NewFileMap()
 	t1 = time.Now()
 	runtime.GOMAXPROCS(runtime.NumCPU())
 }
+
+// Main
 func main() {
 
 	// Set and check flags
@@ -118,7 +119,7 @@ func main() {
 	var (
 		searchDir      = fs.String("d", "", "Source directory")
 		countToDisplay = fs.Int("c", 2, "Minimum count")
-		//		sortBy = fs.String("s", "size", "Sort by [size|count]")
+		grCount        = fs.Int("c", 300000, "Goroutine count")
 	)
 	fs.Usage = printHelp
 	fs.Parse(os.Args[1:])
@@ -129,14 +130,14 @@ func main() {
 
 	// Read and organize all files
 	wg := new(sync.WaitGroup)
-	c := make(chan bool, 300000)
+	c := make(chan bool, *grCount)
 	err := filepath.Walk(*searchDir, func(path string, f os.FileInfo, err error) error {
 		if !f.IsDir() {
 			wg.Add(1)
 			c <- true
 
 			go func(name, path string, size int64) {
-				s := strconv.FormatInt(size, 010)
+				s := strconv.FormatInt(size, 10)
 				checksum := md5.Sum([]byte(name + s))
 				key := hex.EncodeToString(checksum[:16])
 				fm.Store(key, path, f)

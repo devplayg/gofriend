@@ -119,7 +119,8 @@ func main() {
 	var (
 		searchDir      = fs.String("d", "", "Source directory")
 		countToDisplay = fs.Int("c", 2, "Minimum count")
-		grCount        = fs.Int("c", 300000, "Goroutine count")
+		grCount        = fs.Int("gr", 300000, "Goroutine count")
+		//		dispVer        = fs.Bool("v", false, "Print version")
 	)
 	fs.Usage = printHelp
 	fs.Parse(os.Args[1:])

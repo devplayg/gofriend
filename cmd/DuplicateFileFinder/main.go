@@ -132,7 +132,7 @@ func main() {
 		return
 	}
 	if *dispVer {
-		fmt.Printf("dufind v%s\n", *Version)
+		fmt.Printf("dufind v%s\n", Version)
 		return
 	}
 

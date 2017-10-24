@@ -121,18 +121,18 @@ func main() {
 	fs = flag.NewFlagSet("", flag.ExitOnError)
 	var (
 		searchDir      = fs.String("d", "", "Source directory")
-		countToDisplay = fs.Int("c", 2, "Minimum count")
+		countToDisplay = fs.Int("c", 3, "Minimum count")
 		grCount        = fs.Int("gr", 300000, "Goroutine count")
 		dispVer        = fs.Bool("v", false, "Print version")
 	)
 	fs.Usage = printHelp
 	fs.Parse(os.Args[1:])
-	if *searchDir == "" {
-		printHelp()
+	if *dispVer == true {
+		fmt.Printf("dufind v%s\n", Version)
 		return
 	}
-	if *dispVer {
-		fmt.Printf("dufind v%s\n", Version)
+	if *searchDir == "" {
+		printHelp()
 		return
 	}
 

@@ -139,8 +139,12 @@ func main() {
 	// Read and organize all files
 	wg := new(sync.WaitGroup)
 	c := make(chan bool, *grCount)
+	var count int64
+	var dispCount int64
+
 	err := filepath.Walk(*searchDir, func(path string, f os.FileInfo, err error) error {
 		if !f.IsDir() {
+			count += 1
 			wg.Add(1)
 			c <- true
 
@@ -172,9 +176,10 @@ func main() {
 			for _, fn := range vs.Vals[idx].list {
 				fmt.Printf("\t%s\n", fn)
 			}
+			dispCount += int64(vs.Vals[idx].count)
 		}
 	}
-	fmt.Printf("\n# Time: %s\n", time.Since(t1))
+	fmt.Printf("\n# Time: %s, Count(displayed/total): %d/%d\n", time.Since(t1), dispCount, count)
 }
 
 func printHelp() {

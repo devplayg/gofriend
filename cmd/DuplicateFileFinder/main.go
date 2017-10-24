@@ -6,6 +6,8 @@ import (
 	"flag"
 	"fmt"
 	"log"
+	"net/http"
+	_ "net/http/pprof"
 	"os"
 	"path/filepath"
 	"runtime"
@@ -111,8 +113,13 @@ func init() {
 	runtime.GOMAXPROCS(runtime.NumCPU())
 }
 
-// Main
+// Main131
 func main() {
+	// Profiling
+	go func() {
+		http.ListenAndServe("127.0.0.1:8080", nil)
+	}()
+
 	const (
 		Version = "1.0.1710.12401"
 	)
@@ -124,6 +131,7 @@ func main() {
 		countToDisplay = fs.Int("c", 3, "Minimum count")
 		grCount        = fs.Int("gr", 300000, "Goroutine count")
 		dispVer        = fs.Bool("v", false, "Print version")
+		//		cpuprofile     = fs.String("cpuprofile", "", "write cpu profile to file")
 	)
 	fs.Usage = printHelp
 	fs.Parse(os.Args[1:])

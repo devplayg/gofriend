@@ -179,7 +179,7 @@ func main() {
 			dispCount += int64(vs.Vals[idx].count)
 		}
 	}
-	fmt.Printf("\n# Time: %s, Count(displayed/total): %d/%d\n", time.Since(t1), dispCount, count)
+	fmt.Printf("\n# Time: %s, Count(displayed/total): %d/%d, CPU: %d\n", time.Since(t1), dispCount, count, runtime.NumCPU())
 }
 
 func printHelp() {

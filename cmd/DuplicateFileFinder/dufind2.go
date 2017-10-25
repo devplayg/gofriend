@@ -102,7 +102,7 @@ func init() {
 func main() {
 
 	const (
-		Version = "1.0.1710.12401"
+		Version = "1.0.1710.12502"
 	)
 
 	// Set and check flags

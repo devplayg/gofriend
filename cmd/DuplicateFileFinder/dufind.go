@@ -6,8 +6,8 @@ import (
 	"flag"
 	"fmt"
 	"log"
-	"net/http"
-	_ "net/http/pprof"
+	//	"net/http"
+	//	_ "net/http/pprof"
 	"os"
 	"path/filepath"
 	"runtime"
@@ -115,10 +115,6 @@ func init() {
 
 // Main131
 func main() {
-	// Profiling
-	go func() {
-		http.ListenAndServe("127.0.0.1:8080", nil)
-	}()
 
 	const (
 		Version = "1.0.1710.12401"
@@ -129,8 +125,9 @@ func main() {
 	var (
 		searchDir      = fs.String("d", "", "Source directory")
 		countToDisplay = fs.Int("c", 3, "Minimum count")
-		grCount        = fs.Int("gr", 300000, "Goroutine count")
-		dispVer        = fs.Bool("v", false, "Print version")
+		//		isDebug        = fs.Bool("debug", false, "Debug")
+		//		grCount        = fs.Int("gr", 300000, "Goroutine count")
+		dispVer = fs.Bool("v", false, "Print version")
 		//		cpuprofile     = fs.String("cpuprofile", "", "write cpu profile to file")
 	)
 	fs.Usage = printHelp
@@ -144,9 +141,16 @@ func main() {
 		return
 	}
 
+	// Profiling
+	//	if *isDebug {
+	//	go func() {
+	//		http.ListenAndServe(":8080", nil)
+	//	}()
+	//	}
+
 	// Read and organize all files
 	wg := new(sync.WaitGroup)
-	c := make(chan bool, *grCount)
+	//	c := make(chan bool, *grCount)
 	var count int64
 	var dispCount int64
 
@@ -154,14 +158,14 @@ func main() {
 		if !f.IsDir() {
 			count += 1
 			wg.Add(1)
-			c <- true
+			//			c <- true
 
 			go func(name, path string, size int64) {
 				s := strconv.FormatInt(size, 10)
 				checksum := md5.Sum([]byte(name + s))
 				key := hex.EncodeToString(checksum[:16])
 				fm.Store(key, path, f)
-				<-c
+				//				<-c
 				wg.Done()
 			}(f.Name(), path, f.Size())
 		}
@@ -179,7 +183,7 @@ func main() {
 
 	// Print
 	for idx, _ := range vs.Keys {
-		if vs.Vals[idx].count >= *countToDisplay {
+		if vs.Vals[idx].count >= *countToDisplay && vs.Vals[idx].totalSize > 0 {
 			fmt.Printf("# total %-15d bytes, each %-15d bytes, %d files\n", vs.Vals[idx].totalSize, vs.Vals[idx].size, vs.Vals[idx].count)
 			for _, fn := range vs.Vals[idx].list {
 				fmt.Printf("\t%s\n", fn)

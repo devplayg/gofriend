@@ -1,3 +1,3 @@
 # gofriend
 
-SecuSolution Softwares
+SecuSolution Softwares by Go

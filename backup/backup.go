@@ -1,27 +1,37 @@
-package main
+package backup
 
 import (
-	"fmt"
-	"flag"
-	"os"
+	"github.com/jinzhu/gorm"
+	_ "github.com/jinzhu/gorm/dialects/sqlite"
 )
 
-var	fs *flag.FlagSet
-const (
-	DefaultHistoryFile = "/tmp/backup.dbb"
-	Default = "/tmp/backup.dbb"
-)
-
-
-func main(){
-	var (
-		historyFile         = fs.String("repo", DefaultHistoryFile, "History file")
-		srcDir = fs.String("s", "", "Source directory")
-		dstDir = fs.String("d", "", "Destination directory")
-	)
-	fs.Usage = printHelp
-	fs.Parse(os.Args[1:])
+type Product struct {
+	gorm.Model
+	Code  string
+	Price uint
 }
+
+func Backup(srcDir, dstDir, db string) {
+	// Read database file
+	//	readDatabase(db)
+
+	// Read source directory and backup modified files
+
+	// Log
+
+}
+
+func readDatabase(db) {
+	db, err := sql.Open("sqlite3", db)
+	checkErr(err)
+}
+
+func checkErr(err error) {
+	if err != nil {
+		panic(err)
+	}
+}
+
 //
 //// File map
 //type FileMap struct {
@@ -102,7 +112,7 @@ func main(){
 //
 // Main
 //func main() {
-	//fmt.pr
+//fmt.pr
 //}
 //
 //	const (
@@ -173,8 +183,3 @@ func main(){
 //	}
 //	fmt.Printf("\n# Time: %s, Count(displayed/total): %d/%d, CPU: %d\n", time.Since(t1), dispCount, count, runtime.NumCPU())
 //}
-
-func printHelp() {
-	fmt.Println("backup [options]")
-	fs.PrintDefaults()
-}

@@ -46,13 +46,13 @@ type Summary struct {
 	BackupFailure uint32
 	BackupSize    uint64
 	ExecutionTime float64
+	Message       string
 }
 
-func newSummary(Date time.Time, SrcDir, DstDir string) *Summary {
+func newSummary(Date time.Time, SrcDir string) *Summary {
 	return &Summary{
 		Date:   Date,
 		SrcDir: SrcDir,
-		DstDir: DstDir,
 	}
 }
 
@@ -144,6 +144,19 @@ func (b *Backup) initDB() error {
 			message text not null default ''
 		);
 		CREATE INDEX IF NOT EXISTS ix_bak_summary ON bak_summary(date);
+
+		CREATE TABLE IF NOT EXISTS bak_backup(
+			id int not null,
+			path text not null,
+			size int not null,
+			mtime text not null,
+			state int not null,
+			message text not null
+		);
+
+		CREATE INDEX IF NOT EXISTS ix_bak_backup_id on bak_backup(id);
+		CREATE INDEX IF NOT EXISTS ix_bak_backup_id_path on bak_backup(id, path);
+
 	`).Exec()
 	if err != nil {
 		return err
@@ -189,9 +202,9 @@ func (b *Backup) getLastBackupLog() FileMap {
 func (b *Backup) Start() error {
 	oldMap := b.getLastBackupLog()
 	newMap := make(map[string]*File, 10)
-
 	wg := new(sync.WaitGroup)
-	summary := newSummary(b.t, b.srcDir, b.tempDir)
+	summary := newSummary(b.t, b.srcDir)
+	summary.State = 1
 
 	// Backup
 	err := filepath.Walk(b.srcDir, func(path string, f os.FileInfo, err error) error {
@@ -242,20 +255,30 @@ func (b *Backup) Start() error {
 	wg.Wait()
 
 	// Rename directory
-	target := filepath.Join(b.dstDir, b.t.Format("2006-01-02"))
-	err = os.Rename(b.tempDir, target)
-	i := 1
-	for err != nil && i < 3 {
-		err = os.Rename(b.tempDir, target+"_"+strconv.Itoa(i))
-		i += 1
-	}
-	if err != nil {
-		os.RemoveAll(b.tempDir)
+	lastDir := filepath.Join(b.dstDir, b.t.Format("20060102"))
+	err = os.Rename(b.tempDir, lastDir)
+	if err == nil {
+		summary.DstDir = lastDir
+	} else {
+		i := 1
+		for err != nil && i <= 10 {
+			altDir := lastDir + "_" + strconv.Itoa(i)
+			err = os.Rename(b.tempDir, altDir)
+			if err == nil {
+				summary.DstDir = altDir
+			}
+			i += 1
+		}
+		if err != nil {
+			summary.Message = err.Error()
+			summary.State = -1
+			summary.DstDir = b.tempDir
+			os.RemoveAll(b.tempDir)
+		}
 	}
 
 	// Write log
 	summary.ExecutionTime = time.Since(b.t).Seconds()
-	summary.DstDir = b.tempDir
 	b.writeLog(summary)
 
 	return err
@@ -263,8 +286,8 @@ func (b *Backup) Start() error {
 
 func (b *Backup) writeLog(s *Summary) error {
 	res, err := b.o.Raw(`
-		insert into bak_summary(date,src_dir,dst_dir,state,total_size,total_count,backup_new,backup_deleted,backup_success,backup_failure,backup_size,execution_time)
-			values(?,?,?,?,?,?,?,?,?,?,?,?)
+		insert into bak_summary(date,src_dir,dst_dir,state,total_size,total_count,backup_new,backup_deleted,backup_success,backup_failure,backup_size,execution_time,message)
+			values(?,?,?,?,?,?,?,?,?,?,?,?,?)
 	`,
 		s.Date.Format(YYYYMMDDHH24MISS),
 		s.SrcDir,
@@ -278,6 +301,7 @@ func (b *Backup) writeLog(s *Summary) error {
 		s.BackupFailure,
 		s.BackupSize,
 		s.ExecutionTime,
+		s.Message,
 	).Exec()
 	gofriend.CheckErr(err)
 	if err == nil {

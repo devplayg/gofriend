@@ -2,11 +2,10 @@ package backup
 
 import (
 	"database/sql"
+
 	"github.com/devplayg/golibs/orm"
 	_ "github.com/mattn/go-sqlite3"
 	//"io"
-	"fmt"
-	"github.com/devplayg/gofriend"
 	"io"
 	"io/ioutil"
 	"log"
@@ -16,6 +15,8 @@ import (
 	"sync"
 	"sync/atomic"
 	"time"
+
+	"github.com/devplayg/gofriend"
 )
 
 const (
@@ -33,7 +34,7 @@ type Backup struct {
 }
 
 type Summary struct {
-	ID            int
+	ID            int64
 	Date          time.Time
 	SrcDir        string
 	DstDir        string
@@ -61,6 +62,8 @@ type File struct {
 	Size    int64
 	ModTime time.Time
 	Result  int
+	State   int
+	Message string
 }
 
 func newFile(path string, size int64, modTime time.Time) *File {
@@ -177,7 +180,7 @@ func (b *Backup) getLastSummay() *Summary {
 	return &summary
 }
 
-func (b *Backup) getBackupLog(id int) FileMap {
+func (b *Backup) getBackupLog(id int64) FileMap {
 	fm := make(map[string]*File, 0)
 
 	//var files []File
@@ -200,6 +203,7 @@ func (b *Backup) getLastBackupLog() FileMap {
 }
 
 func (b *Backup) Start() error {
+	//	t1 := time.Now()
 	oldMap := b.getLastBackupLog()
 	newMap := make(map[string]*File, 10)
 	wg := new(sync.WaitGroup)
@@ -276,15 +280,18 @@ func (b *Backup) Start() error {
 			os.RemoveAll(b.tempDir)
 		}
 	}
+	//	log.Printf("Backup time: %3.1f\n", time.Since(t1).Seconds())
 
-	// Write log
-	summary.ExecutionTime = time.Since(b.t).Seconds()
-	b.writeLog(summary)
+	//	// Write log
+	//	t1 = time.Now()
+	//	summary.ExecutionTime = time.Since(b.t).Seconds()
+	//	b.writeLog(summary, newMap)
+	//	log.Printf("Logging time: %3.1f\n", time.Since(t1).Seconds())
 
 	return err
 }
 
-func (b *Backup) writeLog(s *Summary) error {
+func (b *Backup) writeLog(s *Summary, m map[string]*File) error {
 	res, err := b.o.Raw(`
 		insert into bak_summary(date,src_dir,dst_dir,state,total_size,total_count,backup_new,backup_deleted,backup_success,backup_failure,backup_size,execution_time,message)
 			values(?,?,?,?,?,?,?,?,?,?,?,?,?)
@@ -305,9 +312,16 @@ func (b *Backup) writeLog(s *Summary) error {
 	).Exec()
 	gofriend.CheckErr(err)
 	if err == nil {
-		num, _ := res.RowsAffected()
-		fmt.Println("mysql row affected nums: ", num)
+		s.ID, _ = res.LastInsertId()
+	} else {
+		return err
 	}
+
+	pstmt, err := b.o.Raw("insert into bak_backup(id, path, size, mtime, state, message) values(?,?,?,?,?,?);").Prepare()
+	for _, f := range m {
+		pstmt.Exec(s.ID, f.Path, f.Size, f.ModTime.Format(YYYYMMDDHH24MISS), f.State, f.Message)
+	}
+	pstmt.Close()
 
 	return nil
 }

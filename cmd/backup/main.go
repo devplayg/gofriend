@@ -3,11 +3,12 @@ package main
 import (
 	"flag"
 	"fmt"
-	"os"
-	"github.com/devplayg/gofriend/backup"
-	"github.com/devplayg/gofriend"
 	"log"
+	"os"
 	"time"
+
+	"github.com/devplayg/gofriend"
+	"github.com/devplayg/gofriend/backup"
 )
 
 var (
@@ -41,7 +42,7 @@ func main() {
 	err = b.Start()
 	gofriend.CheckErr(err)
 
-	log.Printf("Time: %3.1f\n", time.Since(t1).Seconds())
+	log.Printf("Total time: %3.1f\n", time.Since(t1).Seconds())
 }
 
 func printHelp() {

@@ -3,6 +3,7 @@ package backup
 import (
 	"database/sql"
 	"fmt"
+	_ "github.com/mattn/go-sqlite3"
 	"io"
 	"io/ioutil"
 	"log"
@@ -13,50 +14,48 @@ import (
 	"sync"
 	"sync/atomic"
 	"time"
-
-	"github.com/devplayg/golibs/orm"
-	_ "github.com/mattn/go-sqlite3"
-
-	"github.com/devplayg/gofriend"
 )
 
 const (
 	YYYYMMDDHH24MISS = "2006-01-02 15:04:05"
 )
 const (
-	FILE_ADDED = iota
-	FILE_MODIFIED
-	FILE_DELETED
+	FileModified = 1 << iota
+	FileAdded    = 1 << iota
+	FileDeleted  = 1 << iota
 )
 
 type Backup struct {
 	srcDir       string
 	dstDir       string
-	db           *sql.DB
 	dbOriginFile string
 	dbLogFile    string
 	dbFile       string
 	tempDir      string
-	oOrigin      orm.Ormer
-	oLog         orm.Ormer
+	dbOrigin     *sql.DB
+	dbLog        *sql.DB
 	t            time.Time
 }
 
 type Summary struct {
-	ID            int64
-	Date          time.Time
-	SrcDir        string
-	DstDir        string
-	State         int
-	TotalSize     uint64
-	TotalCount    uint32
-	BackupNew     uint32
-	BackupDeleted uint32
-	BackupSuccess uint32
-	BackupFailure uint32
-	BackupSize    uint64
-	ExecutionTime float64
-	Message       string
+	ID             int64
+	Date           time.Time
+	SrcDir         string
+	DstDir         string
+	State          int
+	TotalSize      uint64
+	TotalCount     uint32
+
+	BackupAdded    uint32
+	BackupModified uint32
+	BackupDeleted  uint32
+
+	BackupSuccess  uint32
+	BackupFailure  uint32
+
+	BackupSize     uint64
+	ExecutionTime  float64
+	Message        string
 }
 
 func newSummary(Date time.Time, SrcDir string) *Summary {
@@ -84,7 +83,7 @@ func newFile(path string, size int64, modTime time.Time) *File {
 
 }
 
-type FileMap map[string]*File
+//type FileMap map[string]*File
 
 func NewBackup(srcDir, dstDir string) *Backup {
 	b := Backup{
@@ -134,36 +133,29 @@ func (b *Backup) initDir() error {
 
 // Initialize database
 func (b *Backup) initDB() error {
-	var err error
+	// Set databases
+	dbOrigin, err := sql.Open("sqlite3", b.dbOriginFile)
+	if err != nil {
+		return err
+	}
+	dbLog, err := sql.Open("sqlite3", b.dbLogFile)
+	if err != nil {
+		return err
+	}
 
-	err = orm.RegisterDataBase("orgin", "sqlite3", b.dbOriginFile)
-	gofriend.CheckErr(err)
-
-	err = orm.RegisterDataBase("default", "sqlite3", b.dbLogFile)
-	gofriend.CheckErr(err)
-
-	b.oOrigin = orm.NewOrm()
-	b.oOrigin.Using("origin")
-
-	b.oLog = orm.NewOrm()
-	b.oLog.Using("default")
-
-	//	b.oOrigin = orm.
-	//	b.oOrigin, _ = orm.GetDB("origin")
-	//	b.oOrigin.Using("origin")
-	//	b.oLog, _ = orm.GetDB("default")
-	//	b.oLog.Using("default")
-
-	_, err = b.oOrigin.Raw(`
+	stmt, _ := dbOrigin.Prepare(`
 		CREATE TABLE IF NOT EXISTS bak_origin (
 			path text not null,
 			size int not null,
 			mtime text not null
 		);
-	`).Exec()
+	`)
+	_, err = stmt.Exec()
+	if err != nil {
+		return err
+	}
 
-	b.oLog.Using("default")
-	_, err = b.oLog.Raw(`
+	stmt, err = dbLog.Prepare(`
 		CREATE TABLE IF NOT EXISTS bak_summary (
 			id integer not null primary key autoincrement,
 			date integer not null  DEFAULT CURRENT_TIMESTAMP,
@@ -180,8 +172,19 @@ func (b *Backup) initDB() error {
 			execution_time real not null default 0.0,
 			message text not null default ''
 		);
-		CREATE INDEX IF NOT EXISTS ix_bak_summary ON bak_summary(date);
+		`)
+	_, err = stmt.Exec()
+	if err != nil {
+		return err
+	}
 
+	stmt, err = dbLog.Prepare("CREATE INDEX IF NOT EXISTS ix_bak_summary ON bak_summary(date);")
+	_, err = stmt.Exec()
+	if err != nil {
+		return err
+	}
+
+	stmt, err = dbLog.Prepare(`
 		CREATE TABLE IF NOT EXISTS bak_log(
 			id int not null,
 			path text not null,
@@ -190,53 +193,49 @@ func (b *Backup) initDB() error {
 			state int not null,
 			message text not null
 		);
-		CREATE INDEX IF NOT EXISTS ix_bak_log_id on bak_log(id);
-	`).Exec()
+	`)
+	_, err = stmt.Exec()
 	if err != nil {
 		return err
 	}
 
-	return nil
-}
-
-func (b *Backup) getLastSummay() *Summary {
-	var summary Summary
-	err := b.oLog.Raw(`
-			select id, date, src_dir, dst_dir, state, total_size, total_count, message
-			from bak_summary
-			where id = (select max(id) from bak_summary)
-		`).QueryRow(&summary)
-	gofriend.CheckErr(err)
-	return &summary
-	return nil
-}
-
-func (b *Backup) getBackupLog(id int64) FileMap {
-	fm := make(map[string]*File, 0)
-
-	//	var files []File
-	//	num, err := o.Raw("SELECT id, name FROM user WHERE id = ?", 1).QueryRows(&users)
-	//	if err == nil {
-	//		fmt.Println("user nums: ", num)
-	//	}
-	return fm
-}
-
-func (b *Backup) getLastBackupLog() FileMap {
-	var fm FileMap
-
-	summary := b.getLastSummay()
-	if summary != nil {
-		fm = b.getBackupLog(summary.ID)
+	stmt, err = dbLog.Prepare("CREATE INDEX IF NOT EXISTS ix_bak_log_id on bak_log(id);")
+	_, err = stmt.Exec()
+	if err != nil {
+		return err
 	}
 
-	return fm
+	b.dbOrigin = dbOrigin
+	b.dbLog = dbLog
+
+	return err
 }
 
-func (b *Backup) Start() error {
+func (b *Backup) getOriginMap() sync.Map {
+	m := sync.Map{}
+	//rows, err := db.Query("sele")
+	//checkErr(err)
+	//var uid int
+	//var username string
+	//var department string
+	//var created time.Time
+	//
+	//for rows.Next() {
+	//	err = rows.Scan(&uid, &username, &department, &created)
+	//	checkErr(err)
+	//	fmt.Println(uid)
+	//	fmt.Println(username)
+	//	fmt.Println(department)
+	//	fmt.Println(created)
+	//}
+	//
+	return m
+}
+
+func (b *Backup) Start() (*Summary, error) {
 	t1 := time.Now()
-	oldMap := b.getLastBackupLog()
-	newMap := make(map[string]*File, 10)
+	originMap := b.getOriginMap()
+	newMap := sync.Map{}
 
 	wg := new(sync.WaitGroup)
 	summary := newSummary(b.t, b.srcDir)
@@ -252,38 +251,37 @@ func (b *Backup) Start() error {
 				atomic.AddUint64(&summary.TotalSize, uint64(f.Size()))
 				fi := newFile(path, f.Size(), f.ModTime())
 
-				if oldFile, ok := oldMap[path]; ok {
-					if oldFile.ModTime != f.ModTime() || oldFile.Size != f.Size() {
-						fi.State = FILE_MODIFIED
+				if inf, ok := originMap.Load(path); ok {
+					last := inf.(*File)
+
+					if last.ModTime != f.ModTime() || last.Size != f.Size() {
+						fi.State = FileModified
+						atomic.AddUint32(&summary.BackupModified, 1)
 						backupPath, err := b.BackupFile(path)
 						if err != nil {
 							atomic.AddUint32(&summary.BackupFailure, 1)
-							gofriend.CheckErr(err)
+							checkErr(err)
 						} else {
 							atomic.AddUint32(&summary.BackupSuccess, 1)
 							atomic.AddUint64(&summary.BackupSize, uint64(f.Size()))
 							os.Chtimes(backupPath, f.ModTime(), f.ModTime())
 						}
 					}
-
-					delete(oldMap, path)
-
+					originMap.Delete(path)
 				} else {
-					//					if b.t.Sub(f.ModTime()).Seconds() < 86400 {
-					fi.State = FILE_ADDED
-					atomic.AddUint32(&summary.BackupNew, 1)
+					fi.State = FileAdded
+					atomic.AddUint32(&summary.BackupAdded, 1)
 					backupPath, err := b.BackupFile(path)
 					if err != nil {
 						atomic.AddUint32(&summary.BackupFailure, 1)
-						gofriend.CheckErr(err)
+						checkErr(err)
 					} else {
 						atomic.AddUint32(&summary.BackupSuccess, 1)
 						atomic.AddUint64(&summary.BackupSize, uint64(f.Size()))
 						os.Chtimes(backupPath, f.ModTime(), f.ModTime())
 					}
-					//					}
 				}
-				newMap[path] = fi
+				newMap.Store(path, fi)
 
 				// Done
 				wg.Done()
@@ -291,7 +289,7 @@ func (b *Backup) Start() error {
 		}
 		return nil
 	})
-	gofriend.CheckErr(err)
+	checkErr(err)
 	wg.Wait()
 
 	// Rename directory
@@ -321,96 +319,153 @@ func (b *Backup) Start() error {
 	// Write log
 	t1 = time.Now()
 	summary.ExecutionTime = time.Since(b.t).Seconds()
-	b.writeToDatabase(summary, newMap, oldMap)
+	b.writeToDatabase(summary, newMap, originMap)
 	log.Printf("Logging time: %3.1f\n", time.Since(t1).Seconds())
 
-	return err
+	return summary, err
 }
 
-func (b *Backup) writeToDatabase(s *Summary, nm map[string]*File, om map[string]*File) error {
-	res, err := b.oLog.Raw(`
+func (b *Backup) writeToDatabase(s *Summary, newMap sync.Map, originMap sync.Map) error {
+	stmt, _ := b.dbLog.Prepare(`
 		insert into bak_summary(date,src_dir,dst_dir,state,total_size,total_count,backup_new,backup_deleted,backup_success,backup_failure,backup_size,execution_time,message)
-			values(?,?,?,?,?,?,?,?,?,?,?,?,?)
-	`,
+		values(?,?,?,?,?,?,?,?,?,?,?,?,?)
+	`)
+	res, err := stmt.Exec(
 		s.Date.Format(YYYYMMDDHH24MISS),
 		s.SrcDir,
 		s.DstDir,
 		s.State,
 		s.TotalSize,
 		s.TotalCount,
-		s.BackupNew,
+		s.BackupAdded,
 		s.BackupDeleted,
 		s.BackupSuccess,
 		s.BackupFailure,
 		s.BackupSize,
 		s.ExecutionTime,
 		s.Message,
-	).Exec()
-	gofriend.CheckErr(err)
-	if err == nil {
-		s.ID, _ = res.LastInsertId()
-	} else {
+	)
+	if err != nil {
 		return err
 	}
+	s.ID, err = res.LastInsertId()
 
+	var maxInsertSize uint32 = 3
 	var lines []string
+	var eventLines []string
+	var i uint32 = 0
+	var j uint32 = 0
+
+	// Delete original data ***
 
 	// Modified or added files
-	i := 0
-	for _, f := range nm {
+	newMap.Range(func(key, value interface{}) bool {
+		f := value.(*File)
+		lines = append(lines, fmt.Sprintf("select '%s', %d, '%s'", f.Path, f.Size, f.ModTime.Format(YYYYMMDDHH24MISS)))
+		i += 1
+
+		if i%maxInsertSize == 0 || i == s.TotalCount {
+			err := b.insertIntoOrigin(lines)
+			//query := fmt.Sprintf("insert into bak_origin(path, size, mtime) %s", strings.Join(lines, " union all "))
+			//stmt, _ := b.dbOrigin.Prepare(query)
+			//_, err := stmt.Exec()
+			checkErr(err)
+			lines = nil
+		}
+
 		if f.State > 0 {
-			lines = append(lines, fmt.Sprintf("select %d, '%s', %d, '%s', %d, '%s'", s.ID, f.Path, f.Size, f.ModTime.Format(YYYYMMDDHH24MISS), f.State, f.Message))
-			i += 1
-		}
+			eventLines = append(eventLines, fmt.Sprintf("select %d, '%s', %d, '%s', %d, '%s'", s.ID, f.Path, f.Size, f.ModTime.Format(YYYYMMDDHH24MISS), f.State, f.Message))
+			j += 1
 
-		if i%3 == 0 || len(nm) == i {
-			query := fmt.Sprintf("insert into bak_log(id, path, size, mtime, state, message) %s", strings.Join(lines, " union all "))
-			b.oLog.Raw(query).Exec()
-			lines = nil
+			if j%maxInsertSize == 0 {
+				err := b.insertIntoLog(eventLines)
+				//query := fmt.Sprintf("insert into bak_log(id, path, size, mtime, state, message) %s", strings.Join(eventLines, " union all "))
+				//stmt, _ := b.dbLog.Prepare(query)
+				//_, err := stmt.Exec()
+				checkErr(err)
+				eventLines = nil
+			}
 		}
+		return true
+	})
+	if len(eventLines) > 0 {
+		err := b.insertIntoLog(eventLines)
+		checkErr(err)
+		eventLines = nil
 
 	}
 
-	// Deleted files
-	i = 0
-	lines = nil
-	for _, f := range om {
-		f.State = FILE_DELETED
-		lines = append(lines, fmt.Sprintf("select %d, '%s', %d, '%s', %d, '%s'", s.ID, f.Path, f.Size, f.ModTime.Format(YYYYMMDDHH24MISS), f.State, f.Message))
-		i += 1
+	// deleted event ************
 
-		if i%3 == 0 || len(nm) == i {
-			query := fmt.Sprintf("insert into bak_log(id, path, size, mtime, state, message) %s", strings.Join(lines, " union all "))
-			b.oLog.Raw(query).Exec()
-			lines = nil
-		}
-	}
-
-	// All files
-	i = 0
-	lines = nil
-	for _, f := range om {
-		f.State = FILE_DELETED
-		lines = append(lines, fmt.Sprintf("select %d, '%s', %d, '%s', %d, '%s'", s.ID, f.Path, f.Size, f.ModTime.Format(YYYYMMDDHH24MISS), f.State, f.Message))
-		i += 1
-
-		if i%3 == 0 || len(nm) == i {
-			query := fmt.Sprintf("insert into bak_origin(path, size, mtime) %s", strings.Join(lines, " union all "))
-			b.oOrigin.Raw(query).Exec()
-			lines = nil
-		}
-	}
+	//i := 0
+	//for _, f := range nm.ra {
+	//	if f.State > 0 {
+	//		lines = append(lines, fmt.Sprintf("select %d, '%s', %d, '%s', %d, '%s'", s.ID, f.Path, f.Size, f.ModTime.Format(YYYYMMDDHH24MISS), f.State, f.Message))
+	//		i += 1
+	//	}
+	//
+	//	if i%3 == 0 || len(nm) == i {
+	//	//	query := fmt.Sprintf("insert into bak_log(id, path, size, mtime, state, message) %s", strings.Join(lines, " union all "))
+	//	//	b.oLog.Raw(query).Exec()
+	//	//	lines = nil
+	//	}
+	//
+	//}
+	//
+	//// Deleted files
+	//i = 0
+	//lines = nil
+	//for _, f := range om {
+	//	f.State = FILE_DELETED
+	//	lines = append(lines, fmt.Sprintf("select %d, '%s', %d, '%s', %d, '%s'", s.ID, f.Path, f.Size, f.ModTime.Format(YYYYMMDDHH24MISS), f.State, f.Message))
+	//	i += 1
+	//
+	//	if i%3 == 0 || len(nm) == i {
+	//		query := fmt.Sprintf("insert into bak_log(id, path, size, mtime, state, message) %s", strings.Join(lines, " union all "))
+	//		b.oLog.Raw(query).Exec()
+	//		lines = nil
+	//	}
+	//}
+	//
+	//// All files
+	//i = 0
+	//lines = nil
+	//for _, f := range om {
+	//	f.State = FILE_DELETED
+	//	lines = append(lines, fmt.Sprintf("select %d, '%s', %d, '%s', %d, '%s'", s.ID, f.Path, f.Size, f.ModTime.Format(YYYYMMDDHH24MISS), f.State, f.Message))
+	//	i += 1
+	//
+	//	if i%3 == 0 || len(nm) == i {
+	//		query := fmt.Sprintf("insert into bak_origin(path, size, mtime) %s", strings.Join(lines, " union all "))
+	//		b.oOrigin.Raw(query).Exec()
+	//		lines = nil
+	//	}
+	//}
 
 	return nil
 }
 
+func (b *Backup) insertIntoLog(rows []string) error {
+	query := fmt.Sprintf("insert into bak_log(id, path, size, mtime, state, message) %s", strings.Join(rows, " union all "))
+	stmt, _ := b.dbLog.Prepare(query)
+	_, err := stmt.Exec()
+	return err
+}
+
+func (b *Backup) insertIntoOrigin(rows []string) error {
+	query := fmt.Sprintf("insert into bak_origin(path, size, mtime) %s", strings.Join(rows, " union all "))
+	stmt, _ := b.dbOrigin.Prepare(query)
+	_, err := stmt.Exec()
+	return err
+}
+
 func (b *Backup) Close() error {
-	b.db.Close()
+	b.dbOrigin.Close()
 	return nil
 }
 
 func (b *Backup) BackupFile(path string) (string, error) {
-	log.Printf("Backup: %s\n", path)
+	//log.Printf("Backup: %s\n", path)
 	// Set source
 	from, err := os.Open(path)
 	if err != nil {
@@ -434,4 +489,10 @@ func (b *Backup) BackupFile(path string) (string, error) {
 	}
 
 	return dst, err
+}
+
+func checkErr(err error) {
+	if err != nil {
+		log.Println(err)
+	}
 }

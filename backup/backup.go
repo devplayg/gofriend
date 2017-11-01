@@ -213,11 +213,12 @@ func (b *Backup) initDB() error {
 	return err
 }
 
-func (b *Backup) getOriginMap() sync.Map {
+func (b *Backup) getOriginMap() (sync.Map, int) {
 	m := sync.Map{}
 	rows, err := b.dbOrigin.Query("select path, size, mtime from bak_origin")
 	checkErr(err)
 
+	var count = 0
 	var path string
 	var size int64
 	var modTime string
@@ -229,18 +230,41 @@ func (b *Backup) getOriginMap() sync.Map {
 		f.Size = size
 		f.ModTime, _ = time.Parse(time.RFC3339, modTime)
 		m.Store(path, f)
+		count += 1
 	}
-	return m
+	return m, count
 }
 
 func (b *Backup) Start() (*Summary, error) {
 	t1 := time.Now()
-	originMap := b.getOriginMap()
+	originMap, originCount := b.getOriginMap()
 	newMap := sync.Map{}
 
 	wg := new(sync.WaitGroup)
 	summary := newSummary(b.t, b.srcDir)
+	lastSummary := b.getLastSummary()
 	summary.State = 1
+
+	if originCount < 1 || b.srcDir != lastSummary.SrcDir {
+		summary.State = 2
+		log.Println("Inserting initial data..")
+		err := filepath.Walk(b.srcDir, func(path string, f os.FileInfo, err error) error {
+			if !f.IsDir() {
+				fi := newFile(path, f.Size(), f.ModTime())
+				newMap.Store(path, fi)
+				summary.TotalCount += 1
+			}
+			return nil
+		})
+		checkErr(err)
+		os.RemoveAll(b.tempDir)
+
+		b.writeToDatabase(summary, newMap, sync.Map{})
+		summary.LoggingTime = time.Since(t1).Seconds()
+		log.Printf("Time: %3.1fs\n", summary.LoggingTime)
+		return nil, nil
+	}
+	summary.State = 3
 
 	// Backup
 	err := filepath.Walk(b.srcDir, func(path string, f os.FileInfo, err error) error {
@@ -297,9 +321,11 @@ func (b *Backup) Start() (*Summary, error) {
 	// Rename directory
 	lastDir := filepath.Join(b.dstDir, b.t.Format("20060102"))
 	err = os.Rename(b.tempDir, lastDir)
+
 	if err == nil {
 		summary.DstDir = lastDir
 	} else {
+
 		i := 1
 		for err != nil && i <= 10 {
 			altDir := lastDir + "_" + strconv.Itoa(i)
@@ -316,13 +342,28 @@ func (b *Backup) Start() (*Summary, error) {
 			os.RemoveAll(b.tempDir)
 		}
 	}
+	summary.BackupTime = time.Since(t1).Seconds()
 
 	// Write log
-	summary.BackupTime = time.Since(t1).Seconds()
-	b.writeToDatabase(summary, newMap, originMap)
-
+	err = b.writeToDatabase(summary, newMap, originMap)
 	return summary, err
 }
+
+func (b *Backup) getLastSummary() *Summary {
+	rows, _ := b.dbLog.Query(`
+		select src_dir
+		from bak_summary
+		where id = (select max(id) from bak_summary)
+	`)
+	defer rows.Close()
+	var srcDir string
+	rows.Next()
+	rows.Scan(&srcDir)
+
+	s := newSummary(time.Now(), srcDir)
+	return s
+}
+
 
 func (b *Backup) writeToDatabase(s *Summary, newMap sync.Map, originMap sync.Map) error {
 	t := time.Now()
@@ -415,8 +456,14 @@ func (b *Backup) writeToDatabase(s *Summary, newMap sync.Map, originMap sync.Map
 	}
 	atomic.AddUint32(&s.BackupDeleted, j)
 
+	s.LoggingTime = time.Since(t).Seconds()
+	msg := fmt.Sprintf("Backup time: %3.1f, Logging time: %3.1fs", s.BackupTime, s.LoggingTime)
+	if s.State == 2 {
+		msg = "Data initialized, " + msg
+	}
+
 	stmt, _ = b.dbLog.Prepare("update bak_summary set backup_deleted = ?, message = ? where id = ?")
-	stmt.Exec(s.BackupDeleted, fmt.Sprintf("Backup time: %3.1f, Logging time: %3.1f", s.BackupTime, time.Since(t).Seconds()), s.ID)
+	stmt.Exec(s.BackupDeleted, msg, s.ID)
 
 	return nil
 }
@@ -437,6 +484,7 @@ func (b *Backup) insertIntoOrigin(rows []string) error {
 
 func (b *Backup) Close() error {
 	b.dbOrigin.Close()
+	b.dbLog.Close()
 	return nil
 }
 

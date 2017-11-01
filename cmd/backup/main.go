@@ -17,9 +17,11 @@ var (
 )
 
 func main() {
+
+	// Set CPU count
 	runtime.GOMAXPROCS(runtime.NumCPU())
 
-	t1 := time.Now()
+	t := time.Now()
 	fs = flag.NewFlagSet("", flag.ExitOnError)
 
 	var (
@@ -38,12 +40,14 @@ func main() {
 	}
 
 	s, err := b.Start()
-	b.Close()
 	checkErr(err)
+	b.Close()
 
-	log.Printf("[Backup] ID=%d, Files: %d (Modified: %d, Added: %d, Deleted: %d), Size: %d, Time: %3.1f\n", s.ID, s.BackupModified+s.BackupAdded+s.BackupDeleted, s.BackupModified, s.BackupAdded, s.BackupDeleted, s.BackupSize, s.BackupTime)
-	log.Printf("[Logging] Time: %3.1f\n", s.LoggingTime)
-	log.Printf("[Total] Files: %d, Size: %d, Time: %3.1f\n", s.TotalCount, s.TotalSize, time.Since(t1).Seconds())
+	if s != nil {
+		log.Printf("[Backup] ID=%d, Files: %d (Modified: %d, Added: %d, Deleted: %d), Size: %d, Time: %3.1fs\n", s.ID, s.BackupModified+s.BackupAdded+s.BackupDeleted, s.BackupModified, s.BackupAdded, s.BackupDeleted, s.BackupSize, s.BackupTime)
+		log.Printf("[Logging] Time: %3.1f\n", s.LoggingTime)
+		log.Printf("[Total] Files: %d, Size: %d, Time: %3.1fs\n", s.TotalCount, s.TotalSize, time.Since(t).Seconds())
+	}
 }
 
 func printHelp() {

@@ -25,11 +25,16 @@ func main() {
 	fs = flag.NewFlagSet("", flag.ExitOnError)
 
 	var (
-		srcDir = fs.String("s", "/home/current/", "Source directory")
-		dstDir = fs.String("d", "/home/backup/", "Destination directory")
+		srcDir = fs.String("s", "c:/", "Source directory")
+		dstDir = fs.String("d", "c:/temp", "Destination directory")
 	)
 	fs.Usage = printHelp
 	fs.Parse(os.Args[1:])
+
+	if *srcDir == "" || *dstDir == "" {
+		fs.PrintDefaults()
+		return
+	}
 
 	//	backup
 	b := backup.NewBackup(*srcDir, *dstDir)

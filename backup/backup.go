@@ -250,6 +250,7 @@ func (b *Backup) Start() (*Summary, error) {
 		log.Println("Inserting initial data..")
 		err := filepath.Walk(b.srcDir, func(path string, f os.FileInfo, err error) error {
 			if !f.IsDir() {
+				path = strings.Replace(path, "'", "''", -1)
 				fi := newFile(path, f.Size(), f.ModTime())
 				newMap.Store(path, fi)
 				summary.TotalCount += 1
@@ -272,6 +273,7 @@ func (b *Backup) Start() (*Summary, error) {
 			wg.Add(1)
 
 			go func(path string, f os.FileInfo) {
+				path = strings.Replace(path, "'", "\\'", -1)
 				atomic.AddUint32(&summary.TotalCount, 1)
 				atomic.AddUint64(&summary.TotalSize, uint64(f.Size()))
 				fi := newFile(path, f.Size(), f.ModTime())
@@ -392,7 +394,7 @@ func (b *Backup) writeToDatabase(s *Summary, newMap sync.Map, originMap sync.Map
 	}
 	s.ID, err = res.LastInsertId()
 
-	var maxInsertSize uint32 = 3
+	var maxInsertSize uint32 = 1000
 	var lines []string
 	var eventLines []string
 	var i uint32 = 0
@@ -477,8 +479,9 @@ func (b *Backup) insertIntoLog(rows []string) error {
 
 func (b *Backup) insertIntoOrigin(rows []string) error {
 	query := fmt.Sprintf("insert into bak_origin(path, size, mtime) %s", strings.Join(rows, " union all "))
-	stmt, _ := b.dbOrigin.Prepare(query)
-	_, err := stmt.Exec()
+	stmt, err := b.dbOrigin.Prepare(query)
+	checkErr(err)
+	_, err = stmt.Exec()
 	return err
 }
 

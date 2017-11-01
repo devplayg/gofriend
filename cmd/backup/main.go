@@ -16,7 +16,6 @@ var (
 	t1 time.Time
 )
 
-
 func main() {
 	runtime.GOMAXPROCS(runtime.NumCPU())
 
@@ -38,10 +37,13 @@ func main() {
 		return
 	}
 
-	summary, err := b.Start()
+	s, err := b.Start()
 	b.Close()
 	checkErr(err)
-	log.Printf("Total: %d, Added: %d, Modified: %d, Deleted: %d, Time: %3.1fs\n", summary.TotalCount, summary.BackupAdded, summary.BackupModified, summary.BackupDeleted, time.Since(t1).Seconds())
+
+	log.Printf("[Backup] ID=%d, Files: %d (Modified: %d, Added: %d, Deleted: %d), Size: %d, Time: %3.1f\n", s.ID, s.BackupModified+s.BackupAdded+s.BackupDeleted, s.BackupModified, s.BackupAdded, s.BackupDeleted, s.BackupSize, s.BackupTime)
+	log.Printf("[Logging] Time: %3.1f\n", s.LoggingTime)
+	log.Printf("[Total] Files: %d, Size: %d, Time: %3.1f\n", s.TotalCount, s.TotalSize, time.Since(t1).Seconds())
 }
 
 func printHelp() {

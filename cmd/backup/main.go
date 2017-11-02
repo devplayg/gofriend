@@ -9,6 +9,7 @@ import (
 	"time"
 
 	"github.com/devplayg/gofriend/backup"
+	"github.com/dustin/go-humanize"
 )
 
 var (
@@ -25,8 +26,8 @@ func main() {
 	fs = flag.NewFlagSet("", flag.ExitOnError)
 
 	var (
-		srcDir = fs.String("s", "c:/", "Source directory")
-		dstDir = fs.String("d", "c:/temp", "Destination directory")
+		srcDir = fs.String("s", "/home/current", "Source directory")
+		dstDir = fs.String("d", "/home/backup", "Destination directory")
 	)
 	fs.Usage = printHelp
 	fs.Parse(os.Args[1:])
@@ -37,21 +38,22 @@ func main() {
 	}
 
 	//	backup
-	b := backup.NewBackup(*srcDir, *dstDir)
-	err := b.Initialize()
+	backup := backup.NewBackup(*srcDir, *dstDir)
+	err := backup.Initialize()
 	if err != nil {
 		log.Println(err)
 		return
 	}
 
-	s, err := b.Start()
+	s, err := backup.Start()
 	checkErr(err)
-	b.Close()
+	defer backup.Close()
 
 	if s != nil {
-		log.Printf("[Backup] ID=%d, Files: %d (Modified: %d, Added: %d, Deleted: %d), Size: %d, Time: %3.1fs\n", s.ID, s.BackupModified+s.BackupAdded+s.BackupDeleted, s.BackupModified, s.BackupAdded, s.BackupDeleted, s.BackupSize, s.BackupTime)
+		log.Printf("[Backup] ID=%d, Files: %d (Modified: %d, Added: %d, Deleted: %d), Size: %s, Time: %3.1fs\n", s.ID, s.BackupModified+s.BackupAdded+s.BackupDeleted, s.BackupModified, s.BackupAdded, s.BackupDeleted, humanize.Bytes(s.BackupSize), s.BackupTime)
 		log.Printf("[Logging] Time: %3.1f\n", s.LoggingTime)
-		log.Printf("[Total] Files: %d, Size: %d, Time: %3.1fs\n", s.TotalCount, s.TotalSize, time.Since(t).Seconds())
+		log.Printf("[Total] Files: %d, Size: %s, Time: %3.1fs\n", s.TotalCount, humanize.Bytes(s.TotalSize), time.Since(t).Seconds())
+
 	}
 }
 

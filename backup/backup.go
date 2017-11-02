@@ -32,7 +32,6 @@ type Backup struct {
 	tempDir      string
 	dbOrigin     *sql.DB
 	dbLog        *sql.DB
-	t            time.Time
 }
 
 type Summary struct {
@@ -59,10 +58,11 @@ type Summary struct {
 	LoggingTime float64
 }
 
-func newSummary(Date time.Time, SrcDir string) *Summary {
+func newSummary(SrcDir string) *Summary {
 	return &Summary{
-		Date:   Date,
+		Date:   time.Now(),
 		SrcDir: SrcDir,
+		State:  1,
 	}
 }
 
@@ -98,8 +98,6 @@ func NewBackup(srcDir, dstDir string) *Backup {
 
 // Initialize
 func (b *Backup) Initialize() error {
-	b.t = time.Now()
-
 	var err error
 	err = b.initDir()
 	if err != nil {
@@ -134,29 +132,34 @@ func (b *Backup) initDir() error {
 
 // Initialize database
 func (b *Backup) initDB() error {
+	var err error
+	var query string
+
 	// Set databases
-	dbOrigin, err := sql.Open("sqlite3", b.dbOriginFile)
+	b.dbOrigin, err = sql.Open("sqlite3", b.dbOriginFile)
 	if err != nil {
 		return err
 	}
-	dbLog, err := sql.Open("sqlite3", b.dbLogFile)
+	b.dbLog, err = sql.Open("sqlite3", b.dbLogFile)
 	if err != nil {
 		return err
 	}
 
-	stmt, _ := dbOrigin.Prepare(`
+	// Original database
+	query = `
 		CREATE TABLE IF NOT EXISTS bak_origin (
 			path text not null,
 			size int not null,
 			mtime text not null
 		);
-	`)
-	_, err = stmt.Exec()
+	`
+	_, err = b.dbOrigin.Exec(query)
 	if err != nil {
 		return err
 	}
 
-	stmt, err = dbLog.Prepare(`
+	// Log database
+	query = `
 		CREATE TABLE IF NOT EXISTS bak_summary (
 			id integer not null primary key autoincrement,
 			date integer not null  DEFAULT CURRENT_TIMESTAMP,
@@ -174,19 +177,7 @@ func (b *Backup) initDB() error {
 			execution_time real not null default 0.0,
 			message text not null default ''
 		);
-		`)
-	_, err = stmt.Exec()
-	if err != nil {
-		return err
-	}
-
-	stmt, err = dbLog.Prepare("CREATE INDEX IF NOT EXISTS ix_bak_summary ON bak_summary(date);")
-	_, err = stmt.Exec()
-	if err != nil {
-		return err
-	}
-
-	stmt, err = dbLog.Prepare(`
+		CREATE INDEX IF NOT EXISTS ix_bak_summary ON bak_summary(date);
 		CREATE TABLE IF NOT EXISTS bak_log(
 			id int not null,
 			path text not null,
@@ -195,22 +186,14 @@ func (b *Backup) initDB() error {
 			state int not null,
 			message text not null
 		);
-	`)
-	_, err = stmt.Exec()
+		CREATE INDEX IF NOT EXISTS ix_bak_log_id on bak_log(id);
+	`
+	_, err = b.dbLog.Exec(query)
 	if err != nil {
 		return err
 	}
 
-	stmt, err = dbLog.Prepare("CREATE INDEX IF NOT EXISTS ix_bak_log_id on bak_log(id);")
-	_, err = stmt.Exec()
-	if err != nil {
-		return err
-	}
-
-	b.dbOrigin = dbOrigin
-	b.dbLog = dbLog
-
-	return err
+	return nil
 }
 
 func (b *Backup) getOriginMap() (sync.Map, int) {
@@ -236,21 +219,22 @@ func (b *Backup) getOriginMap() (sync.Map, int) {
 }
 
 func (b *Backup) Start() (*Summary, error) {
-	t1 := time.Now()
+
+	// Create summary
+	summary := newSummary(b.srcDir)
+	lastSummary := b.getLastSummary()
+
+	// Create maps
 	originMap, originCount := b.getOriginMap()
 	newMap := sync.Map{}
 
-	wg := new(sync.WaitGroup)
-	summary := newSummary(b.t, b.srcDir)
-	lastSummary := b.getLastSummary()
-	summary.State = 1
-
+	// Insert initial data
 	if originCount < 1 || b.srcDir != lastSummary.SrcDir {
 		summary.State = 2
 		log.Println("Inserting initial data..")
 		err := filepath.Walk(b.srcDir, func(path string, f os.FileInfo, err error) error {
 			if !f.IsDir() {
-				path = strings.Replace(path, "'", "''", -1)
+				//				path = strings.Replace(path, "'", "\'\'", -1)
 				fi := newFile(path, f.Size(), f.ModTime())
 				newMap.Store(path, fi)
 				summary.TotalCount += 1
@@ -261,19 +245,21 @@ func (b *Backup) Start() (*Summary, error) {
 		os.RemoveAll(b.tempDir)
 
 		b.writeToDatabase(summary, newMap, sync.Map{})
-		summary.LoggingTime = time.Since(t1).Seconds()
+		summary.LoggingTime = time.Since(summary.Date).Seconds()
 		log.Printf("Time: %3.1fs\n", summary.LoggingTime)
 		return nil, nil
 	}
-	summary.State = 3
 
 	// Backup
+	log.Printf("Reading all files in %s\n", b.srcDir)
+	summary.State = 3
+	wg := new(sync.WaitGroup)
 	err := filepath.Walk(b.srcDir, func(path string, f os.FileInfo, err error) error {
 		if !f.IsDir() {
 			wg.Add(1)
 
 			go func(path string, f os.FileInfo) {
-				path = strings.Replace(path, "'", "\\'", -1)
+
 				atomic.AddUint32(&summary.TotalCount, 1)
 				atomic.AddUint64(&summary.TotalSize, uint64(f.Size()))
 				fi := newFile(path, f.Size(), f.ModTime())
@@ -281,14 +267,23 @@ func (b *Backup) Start() (*Summary, error) {
 				if inf, ok := originMap.Load(path); ok {
 					last := inf.(*File)
 
-					if last.ModTime.Equal(f.ModTime()) || last.Size != f.Size() {
+					//					if !last.ModTime.Equal(f.ModTime()) {
+					//					log.Printf("%s = %s, %b\n", last.ModTime.Format(time.RFC3339Nano), f.ModTime().Format(time.RFC3339Nano), last.ModTime.Equal(f.ModTime()))
+					//					log.Printf("%d = %d, %b\n", last.ModTime.Unix(), f.ModTime().Unix(), last.ModTime.Unix() == f.ModTime().Unix())
 
+					//						log.Printf("%d = %d\n", last.Size, f.Size())
+					//					log.Println(last.ModTime.Equal(f.ModTime()))
+
+					//					}
+
+					if last.ModTime.Unix() != f.ModTime().Unix() || last.Size != f.Size() {
 						fi.State = FileModified
 						atomic.AddUint32(&summary.BackupModified, 1)
 						backupPath, err := b.BackupFile(path)
 						if err != nil {
 							atomic.AddUint32(&summary.BackupFailure, 1)
 							checkErr(err)
+							fi.Message = err.Error()
 						} else {
 							atomic.AddUint32(&summary.BackupSuccess, 1)
 							atomic.AddUint64(&summary.BackupSize, uint64(f.Size()))
@@ -303,6 +298,7 @@ func (b *Backup) Start() (*Summary, error) {
 					if err != nil {
 						atomic.AddUint32(&summary.BackupFailure, 1)
 						checkErr(err)
+						fi.Message = err.Error()
 					} else {
 						atomic.AddUint32(&summary.BackupSuccess, 1)
 						atomic.AddUint64(&summary.BackupSize, uint64(f.Size()))
@@ -321,7 +317,7 @@ func (b *Backup) Start() (*Summary, error) {
 	wg.Wait()
 
 	// Rename directory
-	lastDir := filepath.Join(b.dstDir, b.t.Format("20060102"))
+	lastDir := filepath.Join(b.dstDir, summary.Date.Format("20060102"))
 	err = os.Rename(b.tempDir, lastDir)
 
 	if err == nil {
@@ -344,7 +340,7 @@ func (b *Backup) Start() (*Summary, error) {
 			os.RemoveAll(b.tempDir)
 		}
 	}
-	summary.BackupTime = time.Since(t1).Seconds()
+	summary.BackupTime = time.Since(summary.Date).Seconds() - summary.LoggingTime
 
 	// Write log
 	err = b.writeToDatabase(summary, newMap, originMap)
@@ -362,10 +358,9 @@ func (b *Backup) getLastSummary() *Summary {
 	rows.Next()
 	rows.Scan(&srcDir)
 
-	s := newSummary(time.Now(), srcDir)
+	s := newSummary(srcDir)
 	return s
 }
-
 
 func (b *Backup) writeToDatabase(s *Summary, newMap sync.Map, originMap sync.Map) error {
 	t := time.Now()
@@ -394,7 +389,7 @@ func (b *Backup) writeToDatabase(s *Summary, newMap sync.Map, originMap sync.Map
 	}
 	s.ID, err = res.LastInsertId()
 
-	var maxInsertSize uint32 = 1000
+	var maxInsertSize uint32 = 500
 	var lines []string
 	var eventLines []string
 	var i uint32 = 0
@@ -408,7 +403,8 @@ func (b *Backup) writeToDatabase(s *Summary, newMap sync.Map, originMap sync.Map
 	// Modified or added files
 	newMap.Range(func(key, value interface{}) bool {
 		f := value.(*File)
-		lines = append(lines, fmt.Sprintf("select '%s', %d, '%s'", f.Path, f.Size, f.ModTime.Format(time.RFC3339)))
+		path := strings.Replace(f.Path, "'", "''", -1)
+		lines = append(lines, fmt.Sprintf("select '%s', %d, '%s'", path, f.Size, f.ModTime.Format(time.RFC3339)))
 		i += 1
 
 		if i%maxInsertSize == 0 || i == s.TotalCount {
@@ -418,7 +414,7 @@ func (b *Backup) writeToDatabase(s *Summary, newMap sync.Map, originMap sync.Map
 		}
 
 		if f.State > 0 {
-			eventLines = append(eventLines, fmt.Sprintf("select %d, '%s', %d, '%s', %d, '%s'", s.ID, f.Path, f.Size, f.ModTime.Format(time.RFC3339), f.State, f.Message))
+			eventLines = append(eventLines, fmt.Sprintf("select %d, '%s', %d, '%s', %d, '%s'", s.ID, path, f.Size, f.ModTime.Format(time.RFC3339), f.State, f.Message))
 			j += 1
 
 			if j%maxInsertSize == 0 {
@@ -441,7 +437,8 @@ func (b *Backup) writeToDatabase(s *Summary, newMap sync.Map, originMap sync.Map
 	originMap.Range(func(key, value interface{}) bool {
 		f := value.(*File)
 		f.State = FileDeleted
-		eventLines = append(eventLines, fmt.Sprintf("select %d, '%s', %d, '%s', %d, '%s'", s.ID, f.Path, f.Size, f.ModTime.Format(time.RFC3339), f.State, f.Message))
+		path := strings.Replace(f.Path, "'", "''", -1)
+		eventLines = append(eventLines, fmt.Sprintf("select %d, '%s', %d, '%s', %d, '%s'", s.ID, path, f.Size, f.ModTime.Format(time.RFC3339), f.State, f.Message))
 		j += 1
 
 		if j%maxInsertSize == 0 {
@@ -464,8 +461,8 @@ func (b *Backup) writeToDatabase(s *Summary, newMap sync.Map, originMap sync.Map
 		msg = "Data initialized, " + msg
 	}
 
-	stmt, _ = b.dbLog.Prepare("update bak_summary set backup_deleted = ?, message = ? where id = ?")
-	stmt.Exec(s.BackupDeleted, msg, s.ID)
+	stmt, _ = b.dbLog.Prepare("update bak_summary set backup_deleted = ?, message = ?, execution_time = ? where id = ?")
+	stmt.Exec(s.BackupDeleted, msg, s.BackupTime+s.LoggingTime, s.ID)
 
 	return nil
 }
@@ -480,6 +477,13 @@ func (b *Backup) insertIntoLog(rows []string) error {
 func (b *Backup) insertIntoOrigin(rows []string) error {
 	query := fmt.Sprintf("insert into bak_origin(path, size, mtime) %s", strings.Join(rows, " union all "))
 	stmt, err := b.dbOrigin.Prepare(query)
+	defer func() {
+		if r := recover(); r != nil {
+			if err != nil {
+				log.Println(query)
+			}
+		}
+	}()
 	checkErr(err)
 	_, err = stmt.Exec()
 	return err
@@ -492,7 +496,6 @@ func (b *Backup) Close() error {
 }
 
 func (b *Backup) BackupFile(path string) (string, error) {
-	//log.Printf("Backup: %s\n", path)
 	// Set source
 	from, err := os.Open(path)
 	if err != nil {
@@ -501,7 +504,7 @@ func (b *Backup) BackupFile(path string) (string, error) {
 	defer from.Close()
 
 	// Set destination
-	dst := b.tempDir + path[len(b.srcDir):]
+	dst := filepath.Join(b.tempDir, path[len(b.srcDir):])
 	err = os.MkdirAll(filepath.Dir(dst), 0644)
 	to, err := os.OpenFile(dst, os.O_RDWR|os.O_CREATE, 0666)
 	if err != nil {
@@ -520,6 +523,6 @@ func (b *Backup) BackupFile(path string) (string, error) {
 
 func checkErr(err error) {
 	if err != nil {
-		log.Println(err)
+		log.Printf("[Error] %s\n", err.Error())
 	}
 }

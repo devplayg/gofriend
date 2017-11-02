@@ -6,7 +6,6 @@ import (
 	"log"
 	"os"
 	"runtime"
-	"time"
 
 	"github.com/devplayg/gofriend/backup"
 	"github.com/dustin/go-humanize"
@@ -14,12 +13,11 @@ import (
 
 const (
 	ProductName = "backup"
-	Version     = "1.0.1711.11101"
+	Version     = "1.0.1711.11102"
 )
 
 var (
 	fs *flag.FlagSet
-	t1 time.Time
 )
 
 func main() {
@@ -27,49 +25,56 @@ func main() {
 	// Set CPU count
 	runtime.GOMAXPROCS(runtime.NumCPU())
 
-	t := time.Now()
+	//t := time.Now()
 	fs = flag.NewFlagSet("", flag.ExitOnError)
 
 	var (
-		srcDir  = fs.String("s", "", "Source directory")
-		dstDir  = fs.String("d", "", "Destination directory")
-		dispVer = fs.Bool("v", false, "Version")
+		srcDir  = fs.String("s", "", "SOURCE")
+		dstDir  = fs.String("d", "", "DESTINATION")
+		version = fs.Bool("v", false, "Version")
 	)
 	fs.Usage = printHelp
 	fs.Parse(os.Args[1:])
 
-	if *dispVer {
+	if *version {
 		fmt.Printf("%s %s\n", ProductName, Version)
 		return
 	}
 
 	if *srcDir == "" || *dstDir == "" {
-		fs.PrintDefaults()
+		printHelp()
 		return
 	}
 
 	//	backup
-	backup := backup.NewBackup(*srcDir, *dstDir)
-	err := backup.Initialize()
+	b := backup.NewBackup(*srcDir, *dstDir)
+	err := b.Initialize()
 	if err != nil {
 		log.Println(err)
 		return
 	}
-
-	s, err := backup.Start()
+	err = b.Start()
 	checkErr(err)
-	defer backup.Close()
+	b.Close()
 
-	if s != nil {
-		log.Printf("[Backup] ID=%d, Files: %d (Modified: %d, Added: %d, Deleted: %d), Size: %s, Time: %3.1fs\n", s.ID, s.BackupModified+s.BackupAdded+s.BackupDeleted, s.BackupModified, s.BackupAdded, s.BackupDeleted, humanize.Bytes(s.BackupSize), s.BackupTime)
-		log.Printf("[Logging] Time: %3.1f\n", s.LoggingTime)
-		log.Printf("[Total] Files: %d, Size: %s, Time: %3.1fs\n", s.TotalCount, humanize.Bytes(s.TotalSize), time.Since(t).Seconds())
+	//if s != nil {
+	log.Printf("[Backup] ID=%d, Files: %d (Modified: %d, Added: %d, Deleted: %d), Size: %s\n", b.S.ID, b.S.BackupModified+b.S.BackupAdded+b.S.BackupDeleted, b.S.BackupModified, b.S.BackupAdded, b.S.BackupDeleted, humanize.Bytes(b.S.BackupSize))
+	log.Printf("[Total] Files: %d, Size: %s\n", b.S.TotalCount, humanize.Bytes(b.S.TotalSize))
 
-	}
+	msg := fmt.Sprintf("Total: %3.1fs (Reading: %3.1fs, Comparison: %3.1fs, Logging: %3.1fs)",
+		b.S.ExecutionTime,
+		b.S.ReadingTime.Sub(b.S.Date).Seconds(),
+		b.S.ComparisonTime.Sub(b.S.ReadingTime).Seconds(),
+		b.S.LoggingTime.Sub(b.S.ComparisonTime).Seconds(),
+	)
+	log.Printf("[Time] %s\n", msg)
+	//}
 }
 
 func printHelp() {
+	fmt.Println("backup - Backup changed files")
 	fmt.Println("backup [options]")
+	fmt.Println("ex) backup -s /home/data -d /backup")
 	fs.PrintDefaults()
 }
 

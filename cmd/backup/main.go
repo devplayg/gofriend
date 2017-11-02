@@ -12,6 +12,11 @@ import (
 	"github.com/dustin/go-humanize"
 )
 
+const (
+	ProductName = "backup"
+	Version     = "1.0.1711.11101"
+)
+
 var (
 	fs *flag.FlagSet
 	t1 time.Time
@@ -26,11 +31,17 @@ func main() {
 	fs = flag.NewFlagSet("", flag.ExitOnError)
 
 	var (
-		srcDir = fs.String("s", "/home/current", "Source directory")
-		dstDir = fs.String("d", "/home/backup", "Destination directory")
+		srcDir  = fs.String("s", "", "Source directory")
+		dstDir  = fs.String("d", "", "Destination directory")
+		dispVer = fs.Bool("v", false, "Version")
 	)
 	fs.Usage = printHelp
 	fs.Parse(os.Args[1:])
+
+	if *dispVer {
+		fmt.Printf("%s %s\n", ProductName, Version)
+		return
+	}
 
 	if *srcDir == "" || *dstDir == "" {
 		fs.PrintDefaults()

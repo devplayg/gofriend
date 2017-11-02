@@ -31,7 +31,9 @@ type Backup struct {
 	dbFile       string
 	tempDir      string
 	dbOrigin     *sql.DB
+	dbOriginTx   *sql.Tx
 	dbLog        *sql.DB
+	dbLogTx      *sql.Tx
 }
 
 type Summary struct {
@@ -140,10 +142,12 @@ func (b *Backup) initDB() error {
 	if err != nil {
 		return err
 	}
+	b.dbOriginTx, _ = b.dbOrigin.Begin()
 	b.dbLog, err = sql.Open("sqlite3", b.dbLogFile)
 	if err != nil {
 		return err
 	}
+	b.dbLogTx, _ = b.dbLog.Begin()
 
 	// Original database
 	query = `
@@ -231,7 +235,7 @@ func (b *Backup) Start() (*Summary, error) {
 	// Insert initial data
 	if originCount < 1 || b.srcDir != lastSummary.SrcDir {
 		summary.State = 2
-		log.Println("Inserting initial data..")
+		log.Printf("Reading all files in [%s]\n", b.srcDir)
 		err := filepath.Walk(b.srcDir, func(path string, f os.FileInfo, err error) error {
 			if !f.IsDir() {
 				//				path = strings.Replace(path, "'", "\'\'", -1)
@@ -244,6 +248,7 @@ func (b *Backup) Start() (*Summary, error) {
 		checkErr(err)
 		os.RemoveAll(b.tempDir)
 
+		log.Println("Inserting initial data..")
 		b.writeToDatabase(summary, newMap, sync.Map{})
 		summary.LoggingTime = time.Since(summary.Date).Seconds()
 		log.Printf("Time: %3.1fs\n", summary.LoggingTime)
@@ -251,7 +256,7 @@ func (b *Backup) Start() (*Summary, error) {
 	}
 
 	// Backup
-	log.Printf("Reading all files in %s\n", b.srcDir)
+	log.Printf("Reading all files in [%s]\n", b.srcDir)
 	summary.State = 3
 	wg := new(sync.WaitGroup)
 	err := filepath.Walk(b.srcDir, func(path string, f os.FileInfo, err error) error {
@@ -266,15 +271,6 @@ func (b *Backup) Start() (*Summary, error) {
 
 				if inf, ok := originMap.Load(path); ok {
 					last := inf.(*File)
-
-					//					if !last.ModTime.Equal(f.ModTime()) {
-					//					log.Printf("%s = %s, %b\n", last.ModTime.Format(time.RFC3339Nano), f.ModTime().Format(time.RFC3339Nano), last.ModTime.Equal(f.ModTime()))
-					//					log.Printf("%d = %d, %b\n", last.ModTime.Unix(), f.ModTime().Unix(), last.ModTime.Unix() == f.ModTime().Unix())
-
-					//						log.Printf("%d = %d\n", last.Size, f.Size())
-					//					log.Println(last.ModTime.Equal(f.ModTime()))
-
-					//					}
 
 					if last.ModTime.Unix() != f.ModTime().Unix() || last.Size != f.Size() {
 						fi.State = FileModified
@@ -364,11 +360,8 @@ func (b *Backup) getLastSummary() *Summary {
 
 func (b *Backup) writeToDatabase(s *Summary, newMap sync.Map, originMap sync.Map) error {
 	t := time.Now()
-	stmt, _ := b.dbLog.Prepare(`
-		insert into bak_summary(date,src_dir,dst_dir,state,total_size,total_count,backup_modified,backup_added,backup_deleted,backup_success,backup_failure,backup_size,execution_time,message)
-		values(?,?,?,?,?,?,?,?,?,?,?,?,?,?)
-	`)
-	res, err := stmt.Exec(
+
+	rs, err := b.dbLogTx.Exec("insert into bak_summary(date,src_dir,dst_dir,state,total_size,total_count,backup_modified,backup_added,backup_deleted,backup_success,backup_failure,backup_size,execution_time,message) values(?,?,?,?,?,?,?,?,?,?,?,?,?,?)",
 		s.Date.Format(time.RFC3339),
 		s.SrcDir,
 		s.DstDir,
@@ -387,7 +380,7 @@ func (b *Backup) writeToDatabase(s *Summary, newMap sync.Map, originMap sync.Map
 	if err != nil {
 		return err
 	}
-	s.ID, err = res.LastInsertId()
+	s.ID, _ = rs.LastInsertId()
 
 	var maxInsertSize uint32 = 500
 	var lines []string
@@ -396,9 +389,7 @@ func (b *Backup) writeToDatabase(s *Summary, newMap sync.Map, originMap sync.Map
 	var j uint32 = 0
 
 	// Delete original data
-	query := "delete from bak_origin"
-	stmt, _ = b.dbOrigin.Prepare(query)
-	_, err = stmt.Exec()
+	b.dbOriginTx.Exec("delete from bak_origin")
 
 	// Modified or added files
 	newMap.Range(func(key, value interface{}) bool {
@@ -461,22 +452,25 @@ func (b *Backup) writeToDatabase(s *Summary, newMap sync.Map, originMap sync.Map
 		msg = "Data initialized, " + msg
 	}
 
-	stmt, _ = b.dbLog.Prepare("update bak_summary set backup_deleted = ?, message = ?, execution_time = ? where id = ?")
-	stmt.Exec(s.BackupDeleted, msg, s.BackupTime+s.LoggingTime, s.ID)
+	//	stmt, _ = b.dbLog.Prepare("update bak_summary set backup_deleted = ?, message = ?, execution_time = ? where id = ?")
+	//	stmt.Exec(s.BackupDeleted, msg, s.BackupTime+s.LoggingTime, s.ID)
+	b.dbLogTx.Exec("update bak_summary set backup_deleted = ?, message = ?, execution_time = ? where id = ?", s.BackupDeleted, msg, s.BackupTime+s.LoggingTime, s.ID)
+
+	b.dbLogTx.Commit()
+	b.dbOriginTx.Commit()
 
 	return nil
 }
 
 func (b *Backup) insertIntoLog(rows []string) error {
 	query := fmt.Sprintf("insert into bak_log(id, path, size, mtime, state, message) %s", strings.Join(rows, " union all "))
-	stmt, _ := b.dbLog.Prepare(query)
-	_, err := stmt.Exec()
+	_, err := b.dbLogTx.Exec(query)
 	return err
 }
 
 func (b *Backup) insertIntoOrigin(rows []string) error {
 	query := fmt.Sprintf("insert into bak_origin(path, size, mtime) %s", strings.Join(rows, " union all "))
-	stmt, err := b.dbOrigin.Prepare(query)
+	_, err := b.dbOriginTx.Exec(query)
 	defer func() {
 		if r := recover(); r != nil {
 			if err != nil {
@@ -485,7 +479,6 @@ func (b *Backup) insertIntoOrigin(rows []string) error {
 		}
 	}()
 	checkErr(err)
-	_, err = stmt.Exec()
 	return err
 }
 

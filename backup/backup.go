@@ -270,15 +270,17 @@ func (b *Backup) Start() error {
 	log.Infof("Comparing old and new..")
 	b.S.State = 3
 	wg := new(sync.WaitGroup)
+	i := 1
 	err := filepath.Walk(b.srcDir, func(path string, f os.FileInfo, err error) error {
 		if !f.IsDir() {
 			wg.Add(1)
 
-			go func(path string, f os.FileInfo) {
+			go func(path string, f os.FileInfo, i int) {
 				defer func() {
-					log.Debugf("Done: %s", path)
+					//log.Debugf("Done: %s", path)
 					wg.Done()
 				}()
+				log.Debugf("Start checking: [%d] %s (%d)", i, path, f.Size())
 				atomic.AddUint32(&b.S.TotalCount, 1)
 				atomic.AddUint64(&b.S.TotalSize, uint64(f.Size()))
 				fi := newFile(path, f.Size(), f.ModTime())
@@ -287,6 +289,7 @@ func (b *Backup) Start() error {
 					last := inf.(*File)
 
 					if last.ModTime.Unix() != f.ModTime().Unix() || last.Size != f.Size() {
+						log.Debugf("Modified: %s", path)
 						fi.State = FileModified
 						atomic.AddUint32(&b.S.BackupModified, 1)
 						backupPath, err := b.BackupFile(path)
@@ -316,7 +319,8 @@ func (b *Backup) Start() error {
 					}
 				}
 				newMap.Store(path, fi)
-			}(path, f)
+			}(path, f, i)
+			i++
 		}
 		return nil
 	})

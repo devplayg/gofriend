@@ -272,7 +272,7 @@ func (b *Backup) Start() error {
 	wg := new(sync.WaitGroup)
 	i := 1
 	err := filepath.Walk(b.srcDir, func(path string, f os.FileInfo, err error) error {
-		if !f.IsDir() {
+		if !f.IsDir() && f.Size() > 0 {
 			//wg.Add(1)
 
 			//go func(path string, f os.FileInfo, i int) {

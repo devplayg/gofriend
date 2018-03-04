@@ -273,13 +273,13 @@ func (b *Backup) Start() error {
 	i := 1
 	err := filepath.Walk(b.srcDir, func(path string, f os.FileInfo, err error) error {
 		if !f.IsDir() && f.Size() > 0 {
-			//wg.Add(1)
+			wg.Add(1)
 
-			//go func(path string, f os.FileInfo, i int) {
-			//	defer func() {
+			go func(path string, f os.FileInfo, i int) {
+				defer func() {
 					//log.Debugf("Done: %s", path)
-					//wg.Done()
-				//}()
+					wg.Done()
+				}()
 				log.Debugf("Start checking: [%d] %s (%d)", i, path, f.Size())
 				atomic.AddUint32(&b.S.TotalCount, 1)
 				atomic.AddUint64(&b.S.TotalSize, uint64(f.Size()))
@@ -289,7 +289,6 @@ func (b *Backup) Start() error {
 					last := inf.(*File)
 
 					if last.ModTime.Unix() != f.ModTime().Unix() || last.Size != f.Size() {
-						log.Debugf("Modified: %s", path)
 						fi.State = FileModified
 						atomic.AddUint32(&b.S.BackupModified, 1)
 						backupPath, err := b.BackupFile(path)
@@ -319,8 +318,8 @@ func (b *Backup) Start() error {
 					}
 				}
 				newMap.Store(path, fi)
-			//}(path, f, i)
-			//i++
+			}(path, f, i)
+			i++
 		}
 		return nil
 	})
@@ -354,7 +353,7 @@ func (b *Backup) Start() error {
 	b.S.ComparisonTime = time.Now()
 
 	// Write data to database
-	log.Infof("Logging..")
+	log.Debug("Logging..")
 	err = b.writeToDatabase(newMap, originMap)
 	b.S.LoggingTime = time.Now()
 	return err

@@ -3,9 +3,9 @@ package backup
 import (
 	"database/sql"
 	"fmt"
+	log "github.com/sirupsen/logrus"
 	"io"
 	"io/ioutil"
-	"log"
 	"os"
 	"path/filepath"
 	"strconv"
@@ -30,7 +30,8 @@ type Backup struct {
 	dbLogFile    string
 	dbFile       string
 	tempDir      string
-	S           *Summary
+	S            *Summary
+	debug        bool
 
 	dbOrigin   *sql.DB
 	dbOriginTx *sql.Tx
@@ -91,12 +92,13 @@ func newFile(path string, size int64, modTime time.Time) *File {
 
 //type FileMap map[string]*File
 
-func NewBackup(srcDir, dstDir string) *Backup {
+func NewBackup(srcDir, dstDir string, debug bool) *Backup {
 	b := Backup{
 		srcDir:       filepath.Clean(srcDir),
 		dstDir:       filepath.Clean(dstDir),
 		dbOriginFile: filepath.Join(filepath.Clean(dstDir), "backup_origin.db"),
 		dbLogFile:    filepath.Join(filepath.Clean(dstDir), "backup_log.db"),
+		debug:        debug,
 	}
 	return &b
 }
@@ -111,6 +113,10 @@ func (b *Backup) Initialize() error {
 	err = b.initDB()
 	if err != nil {
 		return err
+	}
+
+	if b.debug {
+		log.SetLevel(log.DebugLevel)
 	}
 
 	b.S = newSummary(b.srcDir)
@@ -228,7 +234,7 @@ func (b *Backup) getOriginMap() (sync.Map, int) {
 }
 
 func (b *Backup) Start() error {
-	log.Printf("Reading files in [%s]\n", b.srcDir)
+	log.Infof("Reading files in [%s]", b.srcDir)
 
 	// Get last data
 	lastSummary := b.getLastSummary()
@@ -253,7 +259,7 @@ func (b *Backup) Start() error {
 		b.S.ReadingTime = time.Now()
 		b.S.ComparisonTime = b.S.ReadingTime
 
-		log.Println("Logging initial files..")
+		log.Infof("Logging initial files..")
 		b.writeToDatabase(newMap, sync.Map{})
 		b.S.LoggingTime = time.Now()
 		return nil
@@ -261,7 +267,7 @@ func (b *Backup) Start() error {
 	b.S.ReadingTime = time.Now()
 
 	// Search files and compare with previous data
-	log.Printf("Comparing old and new..\n")
+	log.Infof("Comparing old and new..")
 	b.S.State = 3
 	wg := new(sync.WaitGroup)
 	err := filepath.Walk(b.srcDir, func(path string, f os.FileInfo, err error) error {
@@ -269,7 +275,10 @@ func (b *Backup) Start() error {
 			wg.Add(1)
 
 			go func(path string, f os.FileInfo) {
-
+				defer func() {
+					log.Debugf("Done: %s", path)
+					wg.Done()
+				}()
 				atomic.AddUint32(&b.S.TotalCount, 1)
 				atomic.AddUint64(&b.S.TotalSize, uint64(f.Size()))
 				fi := newFile(path, f.Size(), f.ModTime())
@@ -307,9 +316,6 @@ func (b *Backup) Start() error {
 					}
 				}
 				newMap.Store(path, fi)
-
-				// Done
-				wg.Done()
 			}(path, f)
 		}
 		return nil
@@ -344,7 +350,7 @@ func (b *Backup) Start() error {
 	b.S.ComparisonTime = time.Now()
 
 	// Write data to database
-	log.Printf("Logging..\n")
+	log.Infof("Logging..")
 	err = b.writeToDatabase(newMap, originMap)
 	b.S.LoggingTime = time.Now()
 	return err
@@ -523,6 +529,6 @@ func (b *Backup) BackupFile(path string) (string, error) {
 
 func checkErr(err error) {
 	if err != nil {
-		log.Printf("[Error] %s\n", err.Error())
+		log.Errorf("[Error] %s", err.Error())
 	}
 }

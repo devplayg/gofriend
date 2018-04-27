@@ -192,7 +192,9 @@ func (b *Backup) initDB() error {
 			execution_time real not null default 0.0,
 			message text not null default ''
 		);
+
 		CREATE INDEX IF NOT EXISTS ix_bak_summary ON bak_summary(date);
+
 		CREATE TABLE IF NOT EXISTS bak_log(
 			id int not null,
 			path text not null,
@@ -201,6 +203,7 @@ func (b *Backup) initDB() error {
 			state int not null,
 			message text not null
 		);
+
 		CREATE INDEX IF NOT EXISTS ix_bak_log_id on bak_log(id);
 `
 	_, err = b.dbLog.Exec(query)

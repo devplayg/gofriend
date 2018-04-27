@@ -13,12 +13,19 @@ import (
 
 const (
 	ProductName = "backup"
-	Version     = "1.0.1804.12701"
+	Version     = "1.0.1804.12702"
 )
 
 var (
 	fs *flag.FlagSet
 )
+
+func init() {
+	log.SetFormatter(&log.TextFormatter{
+		ForceColors:   true,
+		DisableColors: true,
+	})
+}
 
 func main() {
 

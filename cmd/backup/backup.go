@@ -13,7 +13,7 @@ import (
 
 const (
 	ProductName = "backup"
-	Version     = "1.0.1711.11102"
+	Version     = "1.0.1804.12701"
 )
 
 var (

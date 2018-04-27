@@ -194,14 +194,14 @@ func (b *Backup) initDB() error {
 		);
 		CREATE INDEX IF NOT EXISTS ix_bak_summary ON bak_summary(date);
 		CREATE TABLE IF NOT EXISTS bak_log(
-		id int not null,
-		path text not null,
-		size int not null,
-		mtime text not null,
-		state int not null,
-		message text not null
-	);
-CREATE INDEX IF NOT EXISTS ix_bak_log_id on bak_log(id);
+			id int not null,
+			path text not null,
+			size int not null,
+			mtime text not null,
+			state int not null,
+			message text not null
+		);
+		CREATE INDEX IF NOT EXISTS ix_bak_log_id on bak_log(id);
 `
 	_, err = b.dbLog.Exec(query)
 	if err != nil {
@@ -269,43 +269,20 @@ func (b *Backup) Start() error {
 	// Search files and compare with previous data
 	log.Infof("Comparing old and new..")
 	b.S.State = 3
-	wg := new(sync.WaitGroup)
 	i := 1
 	err := filepath.Walk(b.srcDir, func(path string, f os.FileInfo, err error) error {
-		if !f.IsDir() && f.Size() > 0 {
-			wg.Add(1)
+		if !f.IsDir() && f.Mode().IsRegular() {
+			log.Debugf("Start checking: [%d] %s (%d)", i, path, f.Size())
+			atomic.AddUint32(&b.S.TotalCount, 1)
+			atomic.AddUint64(&b.S.TotalSize, uint64(f.Size()))
+			fi := newFile(path, f.Size(), f.ModTime())
 
-			go func(path string, f os.FileInfo, i int) {
-				defer func() {
-					//log.Debugf("Done: %s", path)
-					wg.Done()
-				}()
-				log.Debugf("Start checking: [%d] %s (%d)", i, path, f.Size())
-				atomic.AddUint32(&b.S.TotalCount, 1)
-				atomic.AddUint64(&b.S.TotalSize, uint64(f.Size()))
-				fi := newFile(path, f.Size(), f.ModTime())
+			if inf, ok := originMap.Load(path); ok {
+				last := inf.(*File)
 
-				if inf, ok := originMap.Load(path); ok {
-					last := inf.(*File)
-
-					if last.ModTime.Unix() != f.ModTime().Unix() || last.Size != f.Size() {
-						fi.State = FileModified
-						atomic.AddUint32(&b.S.BackupModified, 1)
-						backupPath, err := b.BackupFile(path)
-						if err != nil {
-							atomic.AddUint32(&b.S.BackupFailure, 1)
-							checkErr(err)
-							fi.Message = err.Error()
-						} else {
-							atomic.AddUint32(&b.S.BackupSuccess, 1)
-							atomic.AddUint64(&b.S.BackupSize, uint64(f.Size()))
-							os.Chtimes(backupPath, f.ModTime(), f.ModTime())
-						}
-					}
-					originMap.Delete(path)
-				} else {
-					fi.State = FileAdded
-					atomic.AddUint32(&b.S.BackupAdded, 1)
+				if last.ModTime.Unix() != f.ModTime().Unix() || last.Size != f.Size() {
+					fi.State = FileModified
+					atomic.AddUint32(&b.S.BackupModified, 1)
 					backupPath, err := b.BackupFile(path)
 					if err != nil {
 						atomic.AddUint32(&b.S.BackupFailure, 1)
@@ -317,14 +294,27 @@ func (b *Backup) Start() error {
 						os.Chtimes(backupPath, f.ModTime(), f.ModTime())
 					}
 				}
-				newMap.Store(path, fi)
-			}(path, f, i)
+				originMap.Delete(path)
+			} else {
+				fi.State = FileAdded
+				atomic.AddUint32(&b.S.BackupAdded, 1)
+				backupPath, err := b.BackupFile(path)
+				if err != nil {
+					atomic.AddUint32(&b.S.BackupFailure, 1)
+					checkErr(err)
+					fi.Message = err.Error()
+				} else {
+					atomic.AddUint32(&b.S.BackupSuccess, 1)
+					atomic.AddUint64(&b.S.BackupSize, uint64(f.Size()))
+					os.Chtimes(backupPath, f.ModTime(), f.ModTime())
+				}
+			}
+			newMap.Store(path, fi)
 			i++
 		}
 		return nil
 	})
 	checkErr(err)
-	wg.Wait()
 
 	// Rename directory
 	lastDir := filepath.Join(b.dstDir, b.S.Date.Format("20060102"))

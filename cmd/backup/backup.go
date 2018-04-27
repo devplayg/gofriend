@@ -7,7 +7,7 @@ import (
 	"runtime"
 	log "github.com/sirupsen/logrus"
 
-	"github.com/devplayg/gofriend/backup"
+	"github.com/devplayg/yuna/backup"
 	"github.com/dustin/go-humanize"
 )
 
@@ -29,8 +29,8 @@ func main() {
 	fs = flag.NewFlagSet("", flag.ExitOnError)
 
 	var (
-		srcDir  = fs.String("s", "", "SOURCE")
-		dstDir  = fs.String("d", "", "DESTINATION")
+		srcDir  = fs.String("s", "", "Source directory")
+		dstDir  = fs.String("d", "", "Destination directory")
 		version = fs.Bool("v", false, "Version")
 		debug = fs.Bool("debug", false, "Debug")
 	)
@@ -49,14 +49,15 @@ func main() {
 
 	//	backup
 	b := backup.NewBackup(*srcDir, *dstDir, *debug)
+	defer b.Close()
 	err := b.Initialize()
 	if err != nil {
 		log.Error(err)
 		return
 	}
-	err = b.Start()
-	checkErr(err)
-	b.Close()
+	if err = b.Start(); err != nil {
+		log.Error(err)
+	}
 
 	//if s != nil {
 	log.Infof("[Backup] ID=%d, Files: %d (Modified: %d, Added: %d, Deleted: %d), Size: %s", b.S.ID, b.S.BackupModified+b.S.BackupAdded+b.S.BackupDeleted, b.S.BackupModified, b.S.BackupAdded, b.S.BackupDeleted, humanize.Bytes(b.S.BackupSize))

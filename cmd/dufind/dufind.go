@@ -6,8 +6,6 @@ import (
 	"flag"
 	"fmt"
 	"log"
-	//	"net/http"
-	//	_ "net/http/pprof"
 	"os"
 	"path/filepath"
 	"runtime"

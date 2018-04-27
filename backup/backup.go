@@ -90,8 +90,6 @@ func newFile(path string, size int64, modTime time.Time) *File {
 
 }
 
-//type FileMap map[string]*File
-
 func NewBackup(srcDir, dstDir string, debug bool) *Backup {
 	b := Backup{
 		srcDir:       filepath.Clean(srcDir),

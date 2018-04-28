@@ -298,12 +298,14 @@ func (b *Backup) Start() error {
 					log.Debugf("modified: %s", path)
 					fi.State = FileModified
 					atomic.AddUint32(&b.S.BackupModified, 1)
-					backupPath, err := b.BackupFile(path)
+					backupPath,  dur, err := b.BackupFile(path)
 					if err != nil {
 						atomic.AddUint32(&b.S.BackupFailure, 1)
 						checkErr(err)
-						fi.Message = err.Error()
+						fi.Message = err.Error() + fmt.Sprintf(", copy_time=%4.1f", dur)
+						fi.State = fi.State * -1
 					} else {
+						fi.Message =  fmt.Sprintf("copy_time=%4.1f", dur)
 						atomic.AddUint32(&b.S.BackupSuccess, 1)
 						atomic.AddUint64(&b.S.BackupSize, uint64(f.Size()))
 						os.Chtimes(backupPath, f.ModTime(), f.ModTime())
@@ -314,12 +316,14 @@ func (b *Backup) Start() error {
 				log.Debugf("added: %s", path)
 				fi.State = FileAdded
 				atomic.AddUint32(&b.S.BackupAdded, 1)
-				backupPath, err := b.BackupFile(path)
+				backupPath, dur, err := b.BackupFile(path)
 				if err != nil {
 					atomic.AddUint32(&b.S.BackupFailure, 1)
 					checkErr(err)
 					fi.Message = err.Error()
+					fi.State = fi.State * -1
 				} else {
+					fi.Message =  fmt.Sprintf("copy_time=%4.1f", dur)
 					atomic.AddUint32(&b.S.BackupSuccess, 1)
 					atomic.AddUint64(&b.S.BackupSize, uint64(f.Size()))
 					os.Chtimes(backupPath, f.ModTime(), f.ModTime())
@@ -410,6 +414,8 @@ func (b *Backup) writeToDatabase(newMap sync.Map, originMap sync.Map) error {
 	}
 
 	b.S.ID, _ = rs.LastInsertId()
+	log.Infof("id=%d", b.S.ID)
+
 	var maxInsertSize uint32 = 500
 	var lines []string
 	var eventLines []string
@@ -539,11 +545,13 @@ func (b *Backup) Close() error {
 	return nil
 }
 
-func (b *Backup) BackupFile(path string) (string, error) {
+func (b *Backup) BackupFile(path string) (string, float64, error) {
 	// Set source
+	t := time.Now()
 	from, err := os.Open(path)
 	if err != nil {
-		return "", err
+		return "", time.Since(t).Seconds(), err
+
 	}
 	defer from.Close()
 
@@ -552,17 +560,17 @@ func (b *Backup) BackupFile(path string) (string, error) {
 	err = os.MkdirAll(filepath.Dir(dst), 0644)
 	to, err := os.OpenFile(dst, os.O_RDWR|os.O_CREATE, 0666)
 	if err != nil {
-		return "", err
+		return "",time.Since(t).Seconds(), err
 	}
 	defer to.Close()
 
 	// Copy
 	_, err = io.Copy(to, from)
 	if err != nil {
-		return "", err
+		return "",time.Since(t).Seconds(), err
 	}
 
-	return dst, err
+	return dst, time.Since(t).Seconds(),err
 }
 
 func checkErr(err error) {

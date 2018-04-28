@@ -246,7 +246,7 @@ func (b *Backup) getOriginMap(summary *Summary) (sync.Map, int) {
 }
 
 func (b *Backup) Start() error {
-	log.Infof("source directory: ", b.srcDir)
+	log.Infof("source directory: %s", b.srcDir)
 
 	// Load last backup data
 	lastSummary := b.getLastSummary()
@@ -287,7 +287,7 @@ func (b *Backup) Start() error {
 	err := filepath.Walk(b.srcDir, func(path string, f os.FileInfo, err error) error {
 		if !f.IsDir() && f.Mode().IsRegular() {
 
-			//log.Debugf("Start checking: [%d] %s (%d)", i, path, f.Size())
+			log.Debugf("Start checking: [%d] %s (%d)", i, path, f.Size())
 			atomic.AddUint32(&b.S.TotalCount, 1)
 			atomic.AddUint64(&b.S.TotalSize, uint64(f.Size()))
 			fi := newFile(path, f.Size(), f.ModTime())
@@ -421,7 +421,7 @@ func (b *Backup) writeToDatabase(newMap sync.Map, originMap sync.Map) error {
 	}
 
 	b.S.ID, _ = rs.LastInsertId()
-	log.Infof("id=%d", b.S.ID)
+	log.Infof("backup_id=%d", b.S.ID)
 
 	var maxInsertSize uint32 = 500
 	var lines []string

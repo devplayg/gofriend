@@ -14,6 +14,7 @@ import (
 	"sync/atomic"
 	"time"
 
+	"github.com/dustin/go-humanize"
 	_ "github.com/mattn/go-sqlite3"
 )
 
@@ -64,10 +65,11 @@ type Summary struct {
 	ExecutionTime  float64
 }
 
-func newSummary(SrcDir string) *Summary {
+func newSummary(lastId int64, srcDir string) *Summary {
 	return &Summary{
+		ID:     lastId,
 		Date:   time.Now(),
-		SrcDir: SrcDir,
+		SrcDir: srcDir,
 		State:  1,
 	}
 }
@@ -108,6 +110,7 @@ func (b *Backup) Initialize() error {
 	if err != nil {
 		return err
 	}
+
 	err = b.initDB()
 	if err != nil {
 		return err
@@ -117,7 +120,7 @@ func (b *Backup) Initialize() error {
 		log.SetLevel(log.DebugLevel)
 	}
 
-	b.S = newSummary(b.srcDir)
+	b.S = newSummary(0, b.srcDir)
 
 	return nil
 }
@@ -212,8 +215,16 @@ func (b *Backup) initDB() error {
 	return nil
 }
 
-func (b *Backup) getOriginMap() (sync.Map, int) {
+func (b *Backup) getOriginMap(summary *Summary) (sync.Map, int) {
 	m := sync.Map{}
+	if summary.ID < 1 {
+		log.Info("this is first backup")
+		return m, 0
+	}
+	log.Infof("recent backup: %s", summary.Date)
+
+	//The most recent backup was completed on May 5.
+	// Recent backups were processed on May 5th.
 	rows, err := b.dbOrigin.Query("select path, size, mtime from bak_origin")
 	checkErr(err)
 
@@ -235,17 +246,18 @@ func (b *Backup) getOriginMap() (sync.Map, int) {
 }
 
 func (b *Backup) Start() error {
-	log.Infof("Reading files in [%s]", b.srcDir)
 
-	// Get last data
+	// Load last backup data
 	lastSummary := b.getLastSummary()
-	originMap, originCount := b.getOriginMap()
+	originMap, originCount := b.getOriginMap(lastSummary)
 
 	// Write initial data to database
 	newMap := sync.Map{}
 	if originCount < 1 || b.srcDir != lastSummary.SrcDir {
 		b.S.State = 2
-		b.S.Message = "Initialize data, "
+		b.S.Message = "collecting initialize data"
+		log.Info(b.S.Message)
+
 		err := filepath.Walk(b.srcDir, func(path string, f os.FileInfo, err error) error {
 			if !f.IsDir() {
 				fi := newFile(path, f.Size(), f.ModTime())
@@ -260,7 +272,7 @@ func (b *Backup) Start() error {
 		b.S.ReadingTime = time.Now()
 		b.S.ComparisonTime = b.S.ReadingTime
 
-		log.Infof("Logging initial files..")
+		log.Infof("writing initial data")
 		b.writeToDatabase(newMap, sync.Map{})
 		b.S.LoggingTime = time.Now()
 		return nil
@@ -268,12 +280,13 @@ func (b *Backup) Start() error {
 	b.S.ReadingTime = time.Now()
 
 	// Search files and compare with previous data
-	log.Infof("Comparing old and new..")
+	log.Infof("comparing old and new")
 	b.S.State = 3
 	i := 1
 	err := filepath.Walk(b.srcDir, func(path string, f os.FileInfo, err error) error {
 		if !f.IsDir() && f.Mode().IsRegular() {
-			log.Debugf("Start checking: [%d] %s (%d)", i, path, f.Size())
+
+			//log.Debugf("Start checking: [%d] %s (%d)", i, path, f.Size())
 			atomic.AddUint32(&b.S.TotalCount, 1)
 			atomic.AddUint64(&b.S.TotalSize, uint64(f.Size()))
 			fi := newFile(path, f.Size(), f.ModTime())
@@ -282,6 +295,7 @@ func (b *Backup) Start() error {
 				last := inf.(*File)
 
 				if last.ModTime.Unix() != f.ModTime().Unix() || last.Size != f.Size() {
+					log.Debugf("modified: %s", path)
 					fi.State = FileModified
 					atomic.AddUint32(&b.S.BackupModified, 1)
 					backupPath, err := b.BackupFile(path)
@@ -297,6 +311,7 @@ func (b *Backup) Start() error {
 				}
 				originMap.Delete(path)
 			} else {
+				log.Debugf("added: %s", path)
 				fi.State = FileAdded
 				atomic.AddUint32(&b.S.BackupAdded, 1)
 				backupPath, err := b.BackupFile(path)
@@ -320,7 +335,6 @@ func (b *Backup) Start() error {
 	// Rename directory
 	lastDir := filepath.Join(b.dstDir, b.S.Date.Format("20060102"))
 	err = os.Rename(b.tempDir, lastDir)
-
 	if err == nil {
 		b.S.DstDir = lastDir
 	} else {
@@ -339,33 +353,42 @@ func (b *Backup) Start() error {
 			b.S.State = -1
 			b.S.DstDir = b.tempDir
 			os.RemoveAll(b.tempDir)
+			return err
 		}
 	}
 	b.S.ComparisonTime = time.Now()
 
 	// Write data to database
-	log.Debug("Logging..")
 	err = b.writeToDatabase(newMap, originMap)
 	b.S.LoggingTime = time.Now()
 	return err
 }
 
 func (b *Backup) getLastSummary() *Summary {
+	log.Info("checking last backup data")
+
 	rows, _ := b.dbLog.Query(`
-		select src_dir
+		select id, date, src_dir
 		from bak_summary
 		where id = (select max(id) from bak_summary)
 	`)
 	defer rows.Close()
+
+	var lastId int64
+	var date string
 	var srcDir string
 	rows.Next()
-	rows.Scan(&srcDir)
+	rows.Scan(&lastId, &date, &srcDir)
 
-	s := newSummary(srcDir)
+	s := newSummary(lastId, srcDir)
+	s.Date, _ = time.Parse(time.RFC3339, date)
+
 	return s
 }
 
 func (b *Backup) writeToDatabase(newMap sync.Map, originMap sync.Map) error {
+	log.Info("writing to database")
+
 	rs, err := b.dbLogTx.Exec("insert into bak_summary(date,src_dir,dst_dir,state,total_size,total_count,backup_modified,backup_added,backup_deleted,backup_success,backup_failure,backup_size,execution_time,message) values(?,?,?,?,?,?,?,?,?,?,?,?,?,?)",
 		b.S.Date.Format(time.RFC3339),
 		b.S.SrcDir,
@@ -385,8 +408,8 @@ func (b *Backup) writeToDatabase(newMap sync.Map, originMap sync.Map) error {
 	if err != nil {
 		return err
 	}
-	b.S.ID, _ = rs.LastInsertId()
 
+	b.S.ID, _ = rs.LastInsertId()
 	var maxInsertSize uint32 = 500
 	var lines []string
 	var eventLines []string
@@ -428,10 +451,11 @@ func (b *Backup) writeToDatabase(newMap sync.Map, originMap sync.Map) error {
 	}
 
 	// Deleted files
-	eventLines = nil
+	eventLines = make([]string, 0)
 	j = 0
 	originMap.Range(func(key, value interface{}) bool {
 		f := value.(*File)
+		log.Debugf("deleted: %s", f.Path)
 		f.State = FileDeleted
 		path := strings.Replace(f.Path, "'", "''", -1)
 		eventLines = append(eventLines, fmt.Sprintf("select %d, '%s', %d, '%s', %d, '%s'", b.S.ID, path, f.Size, f.ModTime.Format(time.RFC3339), f.State, f.Message))
@@ -476,7 +500,7 @@ func (b *Backup) insertIntoOrigin(rows []string) error {
 
 func (b *Backup) Close() error {
 	b.S.ExecutionTime = b.S.LoggingTime.Sub(b.S.Date).Seconds()
-	b.S.Message += fmt.Sprintf("Loading: %3.1fs, Comparison: %3.1fs, Logging: %3.1fs",
+	b.S.Message += fmt.Sprintf("reading: %3.1fs, comparing: %3.1fs, writing: %3.1fs",
 		b.S.ReadingTime.Sub(b.S.Date).Seconds(),
 		b.S.ComparisonTime.Sub(b.S.ReadingTime).Seconds(),
 		b.S.LoggingTime.Sub(b.S.ComparisonTime).Seconds(),
@@ -492,6 +516,26 @@ func (b *Backup) Close() error {
 	b.dbOriginTx.Commit()
 	b.dbOrigin.Close()
 	b.dbLog.Close()
+
+	if b.S.ID > 1 { // ID 1 is about initializing data
+		log.WithFields(log.Fields{
+			"modified": b.S.BackupModified,
+			"added":    b.S.BackupAdded,
+			"deleted":  b.S.BackupDeleted,
+		}).Infof("backup files: %d", b.S.BackupModified+b.S.BackupAdded+b.S.BackupDeleted)
+		log.Infof("backup size: %d(%s)", b.S.BackupSize, humanize.Bytes(b.S.BackupSize))
+	}
+	log.WithFields(log.Fields{
+		"files": b.S.TotalCount,
+		"size":  fmt.Sprintf("%d(%s)", b.S.TotalSize, humanize.Bytes(b.S.TotalSize)),
+	}).Info("source directory")
+
+	log.WithFields(log.Fields{
+		"reading":    fmt.Sprintf("%3.1fs", b.S.ReadingTime.Sub(b.S.Date).Seconds()),
+		"comparison": fmt.Sprintf("%3.1fs", b.S.ComparisonTime.Sub(b.S.ReadingTime).Seconds()),
+		"writing":    fmt.Sprintf("%3.1fs", b.S.LoggingTime.Sub(b.S.ComparisonTime).Seconds()),
+	}).Infof("execution time: %3.1fs", b.S.ExecutionTime)
+
 	return nil
 }
 

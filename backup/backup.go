@@ -246,6 +246,7 @@ func (b *Backup) getOriginMap(summary *Summary) (sync.Map, int) {
 }
 
 func (b *Backup) Start() error {
+	log.Infof("source directory: ", b.srcDir)
 
 	// Load last backup data
 	lastSummary := b.getLastSummary()
@@ -298,17 +299,19 @@ func (b *Backup) Start() error {
 					log.Debugf("modified: %s", path)
 					fi.State = FileModified
 					atomic.AddUint32(&b.S.BackupModified, 1)
-					backupPath,  dur, err := b.BackupFile(path)
+					backupPath, dur, err := b.BackupFile(path)
 					if err != nil {
 						atomic.AddUint32(&b.S.BackupFailure, 1)
-						checkErr(err)
-						fi.Message = err.Error() + fmt.Sprintf(", copy_time=%4.1f", dur)
+						log.Error(err)
+						fi.Message = err.Error()
 						fi.State = fi.State * -1
+						//spew.Dump(fi)
 					} else {
-						fi.Message =  fmt.Sprintf("copy_time=%4.1f", dur)
+						fi.Message = fmt.Sprintf("copy_time=%4.1f", dur)
 						atomic.AddUint32(&b.S.BackupSuccess, 1)
 						atomic.AddUint64(&b.S.BackupSize, uint64(f.Size()))
 						os.Chtimes(backupPath, f.ModTime(), f.ModTime())
+						originMap.Delete(path)
 					}
 				}
 				originMap.Delete(path)
@@ -319,16 +322,20 @@ func (b *Backup) Start() error {
 				backupPath, dur, err := b.BackupFile(path)
 				if err != nil {
 					atomic.AddUint32(&b.S.BackupFailure, 1)
-					checkErr(err)
+					log.Error(err)
 					fi.Message = err.Error()
 					fi.State = fi.State * -1
+					//spew.Dump(fi)
 				} else {
-					fi.Message =  fmt.Sprintf("copy_time=%4.1f", dur)
+					fi.Message = fmt.Sprintf("copy_time=%4.1f", dur)
 					atomic.AddUint32(&b.S.BackupSuccess, 1)
 					atomic.AddUint64(&b.S.BackupSize, uint64(f.Size()))
 					os.Chtimes(backupPath, f.ModTime(), f.ModTime())
 				}
 			}
+			//if fi.State < 0 {
+			//	log.Debugf("[%d] %s", fi.State, fi.Path)
+			//}
 			newMap.Store(path, fi)
 			i++
 		}
@@ -430,6 +437,7 @@ func (b *Backup) writeToDatabase(newMap sync.Map, originMap sync.Map) error {
 		f := value.(*File)
 		path := strings.Replace(f.Path, "'", "''", -1)
 		lines = append(lines, fmt.Sprintf("select '%s', %d, '%s'", path, f.Size, f.ModTime.Format(time.RFC3339)))
+
 		i += 1
 
 		if i%maxInsertSize == 0 || i == b.S.TotalCount {
@@ -438,7 +446,7 @@ func (b *Backup) writeToDatabase(newMap sync.Map, originMap sync.Map) error {
 			lines = nil
 		}
 
-		if f.State > 0 {
+		if f.State != 0 {
 			eventLines = append(eventLines, fmt.Sprintf("select %d, '%s', %d, '%s', %d, '%s'", b.S.ID, path, f.Size, f.ModTime.Format(time.RFC3339), f.State, f.Message))
 			j += 1
 
@@ -460,6 +468,7 @@ func (b *Backup) writeToDatabase(newMap sync.Map, originMap sync.Map) error {
 	eventLines = make([]string, 0)
 	j = 0
 	originMap.Range(func(key, value interface{}) bool {
+		atomic.AddUint32(&b.S.BackupSuccess, 1)
 		f := value.(*File)
 		log.Debugf("deleted: %s", f.Path)
 		f.State = FileDeleted
@@ -528,7 +537,11 @@ func (b *Backup) Close() error {
 			"modified": b.S.BackupModified,
 			"added":    b.S.BackupAdded,
 			"deleted":  b.S.BackupDeleted,
-		}).Infof("backup files: %d", b.S.BackupModified+b.S.BackupAdded+b.S.BackupDeleted)
+		}).Infof("files: %d", b.S.BackupModified+b.S.BackupAdded+b.S.BackupDeleted)
+		log.WithFields(log.Fields{
+			"success": b.S.BackupSuccess,
+			"failure": b.S.BackupFailure,
+		}).Infof("backup result")
 		log.Infof("backup size: %d(%s)", b.S.BackupSize, humanize.Bytes(b.S.BackupSize))
 	}
 	log.WithFields(log.Fields{
@@ -560,17 +573,17 @@ func (b *Backup) BackupFile(path string) (string, float64, error) {
 	err = os.MkdirAll(filepath.Dir(dst), 0644)
 	to, err := os.OpenFile(dst, os.O_RDWR|os.O_CREATE, 0666)
 	if err != nil {
-		return "",time.Since(t).Seconds(), err
+		return "", time.Since(t).Seconds(), err
 	}
 	defer to.Close()
 
 	// Copy
 	_, err = io.Copy(to, from)
 	if err != nil {
-		return "",time.Since(t).Seconds(), err
+		return "", time.Since(t).Seconds(), err
 	}
 
-	return dst, time.Since(t).Seconds(),err
+	return dst, time.Since(t).Seconds(), err
 }
 
 func checkErr(err error) {

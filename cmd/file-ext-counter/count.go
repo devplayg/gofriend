@@ -1,13 +1,12 @@
 package main
 
 import (
-	"os"
-	"runtime"
 	"flag"
-	"path/filepath"
 	"fmt"
+	"os"
+	"path/filepath"
+	"runtime"
 )
-
 
 var (
 	fs *flag.FlagSet
@@ -20,7 +19,7 @@ func main() {
 	fs = flag.NewFlagSet("", flag.ExitOnError)
 
 	var (
-		dir= fs.String("d", "", "Directory")
+		dir = fs.String("d", "", "Directory")
 	)
 	fs.Usage = printHelp
 	fs.Parse(os.Args[1:])

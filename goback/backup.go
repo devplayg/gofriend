@@ -1,4 +1,4 @@
-package backup
+package goback
 
 import (
 	"database/sql"

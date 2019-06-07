@@ -7,7 +7,7 @@ import (
 	"os"
 	"runtime"
 
-	"github.com/devplayg/yuna/backup"
+	"github.com/devplayg/yuna/goback"
 )
 
 const (
@@ -76,7 +76,7 @@ func main() {
 	}
 
 	//	Start backup files
-	b := backup.NewBackup(*srcDir, *dstDir, *debug)
+	b := goback.NewBackup(*srcDir, *dstDir, *debug)
 	defer b.Close()
 
 	// Initialize backup
@@ -90,7 +90,6 @@ func main() {
 		log.Error(err)
 	}
 
-
 }
 
 func printHelp() {
@@ -98,10 +97,4 @@ func printHelp() {
 	fmt.Println("backup [options]")
 	fmt.Println("ex) backup -s /home/data -d /backup")
 	fs.PrintDefaults()
-}
-
-func checkErr(err error) {
-	if err != nil {
-		log.Error(err)
-	}
 }

@@ -32,7 +32,8 @@ func main() {
 	dirs := fs.StringArray("dir", []string{}, "directory")
 	debug := fs.Bool("debug", false, "debug")
 	_ = fs.Int("cpu", 1, "CPU Count to use")
-	_ = fs.Uint64("min-size", 100000, "Min size")
+	minFileCount := fs.Int("min-count", 3, "Minimum file count to find")
+	minFileSize := fs.Int64("min-size", 1e5, "Minimum file size to find")
 
 	fs.Usage = printHelp
 	fs.Parse(os.Args[1:])
@@ -42,13 +43,16 @@ func main() {
 		log.SetLevel(log.DebugLevel)
 	}
 
+	dff := dff.NewDuplicateFileFinder(*dirs, *minFileCount, *minFileSize)
+	dff.Start()
+
 	//spew.Dump(dirs)
 	//
-	err := dff.Start(*dirs)
-	if err != nil {
-		log.Error(err)
-		return
-	}
+	//err := dff.Start(*dirs)
+	//if err != nil {
+	//	log.Error(err)
+	//	return
+	//}
 }
 
 func init() {

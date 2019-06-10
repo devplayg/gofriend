@@ -5,8 +5,6 @@ import (
 	"fmt"
 	"github.com/minio/highwayhash"
 	log "github.com/sirupsen/logrus"
-	"io"
-	"io/ioutil"
 	"os"
 	"path/filepath"
 	"strings"
@@ -38,123 +36,107 @@ func NewDuplicateFileFinder(dirs []string, minFileCount int, minFileSize int64) 
 }
 
 func (d *DuplicateFileFinder) Start() error {
-	err := d.checkDirValidation()
+
+	// Check if directories are readable
+	err := isReadableDirs(d.dirs)
 	if err != nil {
 		return err
 	}
 
 	// Collect all files
-	ch := make(chan FileMapData, len(d.dirs))
+	ch := make(chan *FileMapDetail, len(d.dirs))
 	for _, dir := range d.dirs {
 		go CollectFiles(dir, d.minFileSize, ch)
 	}
-
-	// Merge all map
 	d.fileMap = make(FileMap)
 	for i := 0; i < len(d.dirs); i++ {
-		data := <-ch // Receive filemap from goroutine
-		log.Debugf("got data from [%s]", data.dir)
-		for path, fileInfoDetail := range data.fileMap {
-			d.fileMap[path] = fileInfoDetail
+		filMapDetail := <-ch // Receive filemap from goroutine
+		log.Debugf("received result from [%s]", filMapDetail.dir)
+		for path, fileDetail := range filMapDetail.fileMap {
+			d.fileMap[path] = fileDetail
 		}
 	}
+
+	err = d.findDuplicateFiles()
+	if err != nil {
+		return err
+	}
+
+	return nil
+}
+
+func (d *DuplicateFileFinder) findDuplicateFiles() error {
 
 	// Classify files by size
-	log.Debug("Start comparing..")
-	sizeMap := make(FileMapBySize)
+	log.Debug("Classifying files by size")
+	fileMapBySize := make(FileMapBySize)
 	for _, fileDetail := range d.fileMap {
-		if _, ok := sizeMap[fileDetail.f.Size()]; !ok {
-			sizeMap[fileDetail.f.Size()] = make([]*FileInfoDetail, 0)
+		if _, ok := fileMapBySize[fileDetail.f.Size()]; !ok {
+			fileMapBySize[fileDetail.f.Size()] = make([]*FileDetail, 0)
 		}
-		sizeMap[fileDetail.f.Size()] = append(sizeMap[fileDetail.f.Size()], fileDetail)
+		fileMapBySize[fileDetail.f.Size()] = append(fileMapBySize[fileDetail.f.Size()], fileDetail)
 	}
 
-	// Compare
-	//mapWhoseKeyIsHash := map[string][]os.FileInfo
-	//map whose key is
-	//h := hash.Hash()
+	duplicateFileMap := make(map[[32]byte]*DuplicateFiles)
 
-	//h.Sum()
-	fileMapWhoseKeyIsHash := make(map[Key][]string)
-	for _, list := range sizeMap {
-		if len(list) > d.minFileCount {
-			for _, fileDetail := range list {
-				//f.Size()
-				//spew.Dump(f)
-				path := filepath.Join(fileDetail.dir, fileDetail.f.Name())
-				_, err := ioutil.ReadFile(path)
-				if err != nil {
-					//
-					switch err {
-					case ErrAccessDenied:
-						//log.Error("#err")
-					default:
-						if !strings.HasSuffix(err.Error(), "Access is denied.") {
-							log.Error(err)
-						}
-					}
-					continue
-				}
+	for _, list := range fileMapBySize {
 
-				b, err := getHash(path)
-				if err != nil {
+		if len(list) < d.minFileCount {
+			continue
+		}
+
+		for _, fileDetail := range list {
+			path := filepath.Join(fileDetail.dir, fileDetail.f.Name())
+			key, err := generateFileKey(path)
+			if err != nil {
+				if !strings.HasSuffix(err.Error(), "Access is denied.") {
+					log.Warn(err)
+				} else {
 					log.Error(err)
-					continue
 				}
-				var hash [32]byte
-				copy(hash[:], b)
-				key := Key{
-					hash:     hash,
-					UnitSize: fileDetail.f.Size(),
-				}
-				if _, ok := fileMapWhoseKeyIsHash[key]; !ok {
-					fileMapWhoseKeyIsHash[key] = make([]string, 0)
-				}
-				fileMapWhoseKeyIsHash[key] = append(fileMapWhoseKeyIsHash[key], path)
 			}
+
+			//if err != nil {
+			//    log.Error(err)
+			//    continue
+			//}
+
+			if _, ok := duplicateFileMap[key]; !ok {
+				duplicateFileMap[key] = NewDuplicateFiles(fileDetail.f.Size())
+			}
+			duplicateFileMap[key].files = append(duplicateFileMap[key].files, path)
+
 		}
 	}
 
-	//spew.Dump(fileMapWhoseKeyIsHash)
 	no := 1
-	for key, list := range fileMapWhoseKeyIsHash {
-		key.TotalSize = key.UnitSize * int64(len(list))
-		if len(list) > d.minFileCount {
-			fmt.Printf("no=#%d, unit_size=%d, count=%d, total_size=%d\n", no, key.UnitSize, len(list), key.TotalSize)
-			for _, str := range list {
-				fmt.Printf("    - %s\n", str)
+	for _, data := range duplicateFileMap {
+		totalSize := data.Size * int64(len(data.files))
+		//key.TotalSize = key.UnitSize * int64(len(list))
+		if len(data.files) > d.minFileCount {
+			fmt.Printf("no=#%d, unit_size=%d, count=%d, total_size=%d\n", no, data.Size, len(data.files), totalSize)
+			for _, path := range data.files {
+				fmt.Printf("    - %s\n", path)
 			}
 			no++
 		}
 	}
-
 	return nil
+
 }
 
-func (d *DuplicateFileFinder) checkDirValidation() error {
-	for _, dir := range d.dirs {
-		err := IsValidDir(dir)
-		if err != nil {
-			return err
-		}
-	}
-
-	return nil
-}
-
-func CollectFiles(dir string, minFileSize int64, ch chan FileMapData) error {
-	data := FileMapData{
-		fileMap: make(FileMap),
-		dir:     dir,
-	}
-	log.Debugf("collecting files from directory [%s]", dir)
+func CollectFiles(dir string, minFileSize int64, ch chan *FileMapDetail) error {
+	log.Debugf("collecting files from [%s]", dir)
+	fileMapDetail := NewFileMapDetail(dir)
 	defer func() {
-		log.Debugf("done collecting files from [%s]", dir)
-		ch <- data
+		log.Debugf("finished collecting files from [%s]", dir)
+		ch <- fileMapDetail
 	}()
+
+	// Collecting files
 	err := filepath.Walk(dir, func(path string, f os.FileInfo, err error) error {
 		if !f.IsDir() && f.Size() >= minFileSize {
-			data.fileMap[path] = &FileInfoDetail{
+			fileMapDetail.fileMap[path] = &FileDetail{
 				f:   f,
 				dir: filepath.Dir(path),
 			}
@@ -162,28 +144,4 @@ func CollectFiles(dir string, minFileSize int64, ch chan FileMapData) error {
 		return nil
 	})
 	return err
-}
-
-func IsValidDir(dir string) error {
-	_, err := os.Stat(dir)
-	if err != nil {
-		return err
-	}
-	return nil
-}
-
-func getHash(path string) ([]byte, error) {
-	file, err := os.Open(path)
-	if err != nil {
-		return nil, err
-	}
-	defer file.Close()
-
-	highwayHash.Reset()
-	if _, err = io.Copy(highwayHash, file); err != nil {
-		return nil, err
-	}
-
-	checksum := highwayHash.Sum(nil)
-	return checksum, nil
 }

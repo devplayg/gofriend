@@ -6,76 +6,46 @@ import (
 	log "github.com/sirupsen/logrus"
 	"github.com/spf13/pflag"
 	"os"
+	"runtime"
 )
 
 var fs *pflag.FlagSet
 
-//
-//// -------------------------------------------------
-//type arrayFlags []string
-//
-//func (i *arrayFlags) String() string {
-//    return i
-//}
-//
-//func (i *arrayFlags) Set(value string) error {
-//    *i = append(*i, value)
-//    return nil
-//}
-//// -------------------------------------------------
-
-//var myFlags arrayFlags
-//a -d adsfasdf -d asdfasdf asd -d asdfasdfasdf
-
 func main() {
 	fs = pflag.NewFlagSet("dff", pflag.ContinueOnError)
-	dirs := fs.StringArray("dir", []string{}, "directory")
-	debug := fs.Bool("debug", false, "debug")
-	_ = fs.Int("cpu", 1, "CPU Count to use")
+
+	dirs := fs.StringArray("dir", []string{}, "target directories to search duplicate files")
+	cpu := fs.Int("cpu", 0, "CPU Count to use")
 	minFileCount := fs.Int("min-count", 3, "Minimum file count to find")
-	minFileSize := fs.Int64("min-size", 1e5, "Minimum file size to find")
+	minFileSize := fs.Int64("min-size", 100, "Minimum file size to find")
+	debug := fs.Bool("debug", false, "debug")
 
 	fs.Usage = printHelp
-	fs.Parse(os.Args[1:])
+	_ = fs.Parse(os.Args[1:])
 
 	if *debug {
 		log.Info("debug")
 		log.SetLevel(log.DebugLevel)
 	}
 
-	dff := dff.NewDuplicateFileFinder(*dirs, *minFileCount, *minFileSize)
-	dff.Start()
+	if *cpu == 0 {
+		runtime.GOMAXPROCS(runtime.NumCPU())
+	}
 
-	//spew.Dump(dirs)
-	//
-	//err := dff.Start(*dirs)
-	//if err != nil {
-	//	log.Error(err)
-	//	return
-	//}
+	duplicateFileFinder := dff.NewDuplicateFileFinder(*dirs, *minFileCount, *minFileSize)
+	err := duplicateFileFinder.Start()
+	if err != nil {
+		log.Error(err)
+		return
+	}
 }
 
 func init() {
-	//log.SetFormatter(&log.TextFormatter{
-	//    DisableColors: true,
-	//    FullTimestamp: true,
-	//})
+	log.SetFormatter(&log.TextFormatter{
+		DisableColors: true,
+		FullTimestamp: true,
+	})
 }
-
-//func IsValidDirectory(dir string) error {
-//if _, err := os.Stat(dir); os.IsNotExist(err) {
-//    return errors.New("directory not found:"+dir)
-//}
-//
-//_, err := os.Stat(dir)
-//if err != nil {
-//    return err
-//}
-//
-////if !fi.IsDir()
-//
-//return nil
-//}
 
 func printHelp() {
 	fmt.Println("dff - Duplicate file finder")

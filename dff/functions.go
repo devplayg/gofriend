@@ -206,6 +206,7 @@ func getSortedValues(duplicateFileMap DuplicateFileMap, sortBy int) []*UniqFile 
 	return list
 }
 
+// https://programming.guide/go/formatting-byte-size-to-human-readable-format.html
 func ByteCountDecimal(b int64) string {
 	const unit = 1000
 	if b < unit {
@@ -219,6 +220,7 @@ func ByteCountDecimal(b int64) string {
 	return fmt.Sprintf("%.1f %cB", float64(b)/float64(div), "kMGTPE"[exp])
 }
 
+// https://programming.guide/go/formatting-byte-size-to-human-readable-format.html
 func ByteCountBinary(b int64) string {
 	const unit = 1024
 	if b < unit {

@@ -8,7 +8,7 @@ import (
 )
 
 var fs *pflag.FlagSet
-var version = "1.0.1"
+var version = "1.0.2"
 
 func main() {
 	fs = pflag.NewFlagSet("dff", pflag.ContinueOnError)

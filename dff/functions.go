@@ -120,9 +120,8 @@ func searchDir(dir string, minFileSize int64, ch chan *FileMapDetail) error {
 	err := filepath.Walk(dir, func(path string, f os.FileInfo, err error) error {
 		if err != nil {
 			log.Error(err)
-			return err
 		}
-		if !f.IsDir() && f.Mode().IsRegular() && f.Size() >= minFileSize {
+		if err == nil && !f.IsDir() && f != nil && f.Mode().IsRegular() && f.Size() >= minFileSize {
 			fileMapDetail.fileMap[path] = &FileDetail{
 				f:   f,
 				dir: filepath.Dir(path),

@@ -34,17 +34,19 @@ func NewFileMapDetail(dir string) *FileMapDetail {
 
 type FileMapBySize map[int64][]*FileDetail
 
-type DuplicateFiles struct {
+type SameFiles struct {
 	files []string
 	Size  int64
 }
 
-func NewDuplicateFiles(size int64) *DuplicateFiles {
-	return &DuplicateFiles{
+func NewDuplicateFiles(size int64) *SameFiles {
+	return &SameFiles{
 		Size:  size,
 		files: make([]string, 0),
 	}
 }
+
+type DuplicateFileMap map[[32]byte]*SameFiles
 
 //type FileKey struct {
 //	Hash  [32]byte

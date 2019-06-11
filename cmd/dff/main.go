@@ -19,6 +19,7 @@ func main() {
 	minFileCount := fs.IntP("min-count", "c", 3, "Minimum file count to find")
 	minFileSize := fs.Int64P("min-size", "s", 100, "Minimum file size to find")
 	verbose := fs.BoolP("verbose", "v", false, "Verbose")
+	sortBy := fs.StringP("sort", "r", "total", "Sort by [size|total|count]")
 
 	fs.Usage = printHelp
 	_ = fs.Parse(os.Args[1:])
@@ -31,7 +32,7 @@ func main() {
 		runtime.GOMAXPROCS(runtime.NumCPU())
 	}
 
-	duplicateFileFinder := dff.NewDuplicateFileFinder(*dirs, *minFileCount, *minFileSize)
+	duplicateFileFinder := dff.NewDuplicateFileFinder(*dirs, *minFileCount, *minFileSize, *sortBy)
 	err := duplicateFileFinder.Start()
 	if err != nil {
 		log.Error(err)

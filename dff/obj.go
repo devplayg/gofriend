@@ -1,14 +1,14 @@
 package dff
 
 import (
-	"errors"
 	"hash"
 	"os"
 )
 
-// Errors
-var (
-	ErrAccessDenied = errors.New("access is denied")
+const (
+	SortBySize = iota + 1
+	SortByTotalSize
+	SortByCount
 )
 
 var highwayHash hash.Hash
@@ -34,23 +34,39 @@ func NewFileMapDetail(dir string) *FileMapDetail {
 
 type FileMapBySize map[int64][]*FileDetail
 
-type SameFiles struct {
-	files []string
-	Size  int64
+type DuplicateFileMap map[[32]byte]*UniqFile
+
+type UniqFile struct {
+	list      []string
+	Size      int64
+	TotalSize int64
+	Count     int
 }
 
-func NewDuplicateFiles(size int64) *SameFiles {
-	return &SameFiles{
-		Size:  size,
-		files: make([]string, 0),
+// Sorting for UniqFile
+type UniqFiles []*UniqFile
+
+func (s UniqFiles) Len() int      { return len(s) }
+func (s UniqFiles) Swap(i, j int) { s[i], s[j] = s[j], s[i] }
+
+// Sort by size
+type BySize struct{ UniqFiles }
+
+func (s BySize) Less(i, j int) bool { return s.UniqFiles[i].Size > s.UniqFiles[j].Size }
+
+// Sort by total size
+type ByTotalSize struct{ UniqFiles }
+
+func (s ByTotalSize) Less(i, j int) bool { return s.UniqFiles[i].TotalSize > s.UniqFiles[j].TotalSize }
+
+// Sort by
+type ByCount struct{ UniqFiles }
+
+func (s ByCount) Less(i, j int) bool { return s.UniqFiles[i].Count > s.UniqFiles[j].Count }
+
+func NewDuplicateFiles(size int64) *UniqFile {
+	return &UniqFile{
+		Size: size,
+		list: make([]string, 0),
 	}
 }
-
-type DuplicateFileMap map[[32]byte]*SameFiles
-
-//type FileKey struct {
-//	Hash  [32]byte
-//	Size  int64
-//	Count int
-//}
-//type ResultFileMap map[FileKey][]string

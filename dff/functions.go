@@ -6,8 +6,26 @@ import (
 	"io"
 	"os"
 	"path/filepath"
+	"sort"
 	"strings"
 )
+
+func getSortValue(sortBy string) int {
+	var sortValue int
+	sortBy = strings.TrimSpace(strings.ToLower(sortBy))
+	switch sortBy {
+	case "total":
+		sortValue = SortByTotalSize
+	case "size":
+		sortValue = SortBySize
+	case "count":
+		sortValue = SortByCount
+	default:
+		sortValue = SortByTotalSize
+	}
+
+	return sortValue
+}
 
 func isReadableDirs(dirs []string) error {
 	for _, dir := range dirs {
@@ -93,7 +111,6 @@ func searchDir(dir string, minFileSize int64, ch chan *FileMapDetail) error {
 }
 
 func findDuplicateFiles(fileMap FileMap, minFileCount int) (DuplicateFileMap, int, error) {
-
 	var accessDeniedTotal int
 	fileMapBySize := classifyFilesBySize(fileMap)
 	duplicateFileMap := make(DuplicateFileMap)
@@ -138,24 +155,44 @@ func updateDuplicateFileMap(duplicateFileMap DuplicateFileMap, list []*FileDetai
 		if _, ok := duplicateFileMap[key]; !ok {
 			duplicateFileMap[key] = NewDuplicateFiles(fileDetail.f.Size())
 		}
-		duplicateFileMap[key].files = append(duplicateFileMap[key].files, path)
+		duplicateFileMap[key].list = append(duplicateFileMap[key].list, path)
+		duplicateFileMap[key].TotalSize += fileDetail.f.Size()
+		duplicateFileMap[key].Count++
 	}
-
 	return accessDeniedCount
 }
 
-func displayDuplicateFiles(duplicateFileMap DuplicateFileMap, accessDeniedCount, minFileCount int) {
+func displayDuplicateFiles(duplicateFileMap DuplicateFileMap, accessDeniedCount, minFileCount int, sortBy int) {
+	list := getSortedValues(duplicateFileMap, sortBy)
 	no := 1
-	for _, data := range duplicateFileMap {
-		totalSize := data.Size * int64(len(data.files))
-		//key.TotalSize = key.UnitSize * int64(len(list))
-		if len(data.files) > minFileCount {
-			fmt.Printf("no=#%d, unit_size=%d, count=%d, total_size=%d\n", no, data.Size, len(data.files), totalSize)
-			for _, path := range data.files {
+	for _, uniqFile := range list {
+		if len(uniqFile.list) > minFileCount {
+			fmt.Printf("no=#%d, unit_size=%d, count=%d, total_size=%d\n", no, uniqFile.Size, len(uniqFile.list), uniqFile.TotalSize)
+			for _, path := range uniqFile.list {
 				fmt.Printf("    - %s\n", path)
 			}
 			no++
 		}
 	}
-	log.Infof("Access denied files: %d", accessDeniedCount)
+}
+
+func getSortedValues(duplicateFileMap DuplicateFileMap, sortBy int) []*UniqFile {
+	list := make([]*UniqFile, 0, len(duplicateFileMap))
+	for _, v := range duplicateFileMap {
+		list = append(list, v)
+	}
+
+	// Sort by
+	switch sortBy {
+	case SortByCount:
+		sort.Sort(ByCount{list})
+	case SortBySize:
+		sort.Sort(BySize{list})
+	case SortByTotalSize:
+		sort.Sort(ByTotalSize{list})
+	default:
+		sort.Sort(ByTotalSize{list})
+	}
+
+	return list
 }

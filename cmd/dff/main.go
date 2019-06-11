@@ -16,7 +16,7 @@ func main() {
 	// Handle options
 	dirs := fs.StringArrayP("dir", "d", []string{}, "target directories to search duplicate files")
 	minNumOfFilesInFileGroup := fs.IntP("min-count", "c", 5, "Minimum number of files in file group")
-	minFileSize := fs.Int64P("min-size", "s", 1024*10e3, "Minimum file size (Byte)")
+	minFileSize := fs.Int64P("min-size", "s", 10e6, "Minimum file size (Byte)")
 	verbose := fs.BoolP("verbose", "v", false, "Verbose")
 	sortBy := fs.StringP("sort", "r", "total", "Sort by [size|total|count]")
 

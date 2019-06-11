@@ -46,21 +46,22 @@ func (d *DuplicateFileFinder) Init(verbose bool) {
 }
 
 func (d *DuplicateFileFinder) Start() error {
-	err := isReadableDirs(d.dirs)
+	absDirs, err := isReadableDirs(d.dirs)
 	if err != nil {
 		return err
 	}
+	d.dirs = absDirs
 
 	fileMap, err := collectFilesInDirs(d.dirs, d.minFileSize)
 	if err != nil {
 		return err
 	}
 
-	duplicateFileMap, accessDeniedCount, err := findDuplicateFiles(fileMap, d.minNumOfFilesInFileGroup)
+	duplicateFileMap, err := findDuplicateFiles(fileMap, d.minNumOfFilesInFileGroup)
 	if err != nil {
 		return err
 	}
 
-	displayDuplicateFiles(duplicateFileMap, len(fileMap), accessDeniedCount, d.minNumOfFilesInFileGroup, d.sortBy)
+	displayDuplicateFiles(duplicateFileMap, len(fileMap), d.minNumOfFilesInFileGroup, d.sortBy)
 	return nil
 }

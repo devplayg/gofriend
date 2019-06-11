@@ -2,7 +2,7 @@
 
 ### [DFF](./cmd/dff/README.md)
 
-Duplicate file finder in Go
+Duplicate file finder in Go and Highwayhash
 
 ### GoBack
 

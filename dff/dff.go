@@ -3,6 +3,8 @@ package dff
 import (
 	"encoding/hex"
 	"github.com/minio/highwayhash"
+	log "github.com/sirupsen/logrus"
+	"runtime"
 )
 
 func init() {
@@ -15,21 +17,37 @@ func init() {
 }
 
 type DuplicateFileFinder struct {
-	dirs              []string
-	minFileCount      int
-	minFileSize       int64
-	sortBy            int
-	accessDeniedCount int
+	dirs                     []string
+	minNumOfFilesInFileGroup int
+	minFileSize              int64
+	sortBy                   int
+	accessDeniedCount        int
 }
 
-func NewDuplicateFileFinder(dirs []string, minFileCount int, minFileSize int64, sortBy string) *DuplicateFileFinder {
+func NewDuplicateFileFinder(dirs []string, minNumOfFilesInFileGroup int, minFileSize int64, sortBy string) *DuplicateFileFinder {
 	dff := DuplicateFileFinder{
-		sortBy:       getSortValue(sortBy),
-		dirs:         dirs,
-		minFileCount: minFileCount,
-		minFileSize:  minFileSize,
+		sortBy:                   getSortValue(sortBy),
+		dirs:                     dirs,
+		minNumOfFilesInFileGroup: minNumOfFilesInFileGroup,
+		minFileSize:              minFileSize,
 	}
+	log.WithFields(log.Fields{
+		"min_file_size":                         minFileSize,
+		"minimum_number_of_files_in_file_group": minNumOfFilesInFileGroup,
+		"sort_by":                               sortBy,
+	}).Info("settings")
+
 	return &dff
+}
+
+func (d *DuplicateFileFinder) Init(verbose bool, cpu int) {
+	if verbose {
+		log.SetLevel(log.DebugLevel)
+	}
+
+	if cpu == 0 {
+		runtime.GOMAXPROCS(runtime.NumCPU())
+	}
 }
 
 func (d *DuplicateFileFinder) Start() error {
@@ -43,12 +61,11 @@ func (d *DuplicateFileFinder) Start() error {
 		return err
 	}
 
-	duplicateFileMap, accessDeniedCount, err := findDuplicateFiles(fileMap, d.minFileCount)
+	duplicateFileMap, accessDeniedCount, err := findDuplicateFiles(fileMap, d.minNumOfFilesInFileGroup)
 	if err != nil {
 		return err
 	}
 
-	displayDuplicateFiles(duplicateFileMap, accessDeniedCount, d.minFileCount, d.sortBy)
-
+	displayDuplicateFiles(duplicateFileMap, len(fileMap), accessDeniedCount, d.minNumOfFilesInFileGroup, d.sortBy)
 	return nil
 }

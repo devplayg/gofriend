@@ -1,7 +1,14 @@
-# gofriend
+# Utils
 
-SecuSolution Softwares by Go
-- backup: backup data
-- dufind: duplicated file finder
+### DFF
 
-![Screenshot](gf.jpg)
+Duplicate file finder in Go
+
+### GoBack
+
+Backup data in go
+
+
+### PerlBack
+
+Backup script in Perl

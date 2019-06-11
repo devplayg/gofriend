@@ -48,7 +48,6 @@ func isValidDir(dir string) error {
 
 func generateFileKey(path string) ([32]byte, error) {
 	hash, err := getHighwayHash(path)
-	//logrus.Debugf("%s - %s", filepath.Base(path), hex.EncodeToString(hash))
 	if err != nil {
 		return [32]byte{}, err
 	}
@@ -80,6 +79,7 @@ func collectFilesInDirs(dirs []string, minFileSize int64) (FileMap, error) {
 	for _, dir := range dirs {
 		go searchDir(dir, minFileSize, ch)
 	}
+
 	fileMap := make(FileMap)
 	for i := 0; i < len(dirs); i++ {
 		filMapDetail := <-ch // Receive filemap from goroutine
@@ -92,7 +92,7 @@ func collectFilesInDirs(dirs []string, minFileSize int64) (FileMap, error) {
 }
 
 func searchDir(dir string, minFileSize int64, ch chan *FileMapDetail) error {
-	log.Infof("searching files in [%s]", dir)
+	log.Infof("collecting files in [%s]", dir)
 	fileMapDetail := NewFileMapDetail(dir)
 	defer func() {
 		log.Debugf("finished searching files in [%s]", dir)
@@ -110,12 +110,12 @@ func searchDir(dir string, minFileSize int64, ch chan *FileMapDetail) error {
 	return err
 }
 
-func findDuplicateFiles(fileMap FileMap, minFileCount int) (DuplicateFileMap, int, error) {
+func findDuplicateFiles(fileMap FileMap, minNumOfFilesInFileGroup int) (DuplicateFileMap, int, error) {
 	var accessDeniedTotal int
 	fileMapBySize := classifyFilesBySize(fileMap)
 	duplicateFileMap := make(DuplicateFileMap)
 	for _, list := range fileMapBySize {
-		if len(list) < minFileCount {
+		if len(list) < minNumOfFilesInFileGroup {
 			continue
 		}
 
@@ -126,7 +126,7 @@ func findDuplicateFiles(fileMap FileMap, minFileCount int) (DuplicateFileMap, in
 }
 
 func classifyFilesBySize(fileMap FileMap) FileMapBySize {
-	log.Debug("Classifying files by size")
+	log.Debug("classifying files by size")
 	fileMapBySize := make(FileMapBySize)
 	for _, fileDetail := range fileMap {
 		if _, ok := fileMapBySize[fileDetail.f.Size()]; !ok {
@@ -162,11 +162,11 @@ func updateDuplicateFileMap(duplicateFileMap DuplicateFileMap, list []*FileDetai
 	return accessDeniedCount
 }
 
-func displayDuplicateFiles(duplicateFileMap DuplicateFileMap, accessDeniedCount, minFileCount int, sortBy int) {
+func displayDuplicateFiles(duplicateFileMap DuplicateFileMap, totalFileCount int, accessDeniedFileCount, minNumOfFilesInFileGroup int, sortBy int) {
 	list := getSortedValues(duplicateFileMap, sortBy)
 	no := 1
 	for _, uniqFile := range list {
-		if len(uniqFile.list) > minFileCount {
+		if len(uniqFile.list) >= minNumOfFilesInFileGroup {
 			fmt.Printf("no=#%d, unit_size=%d, count=%d, total_size=%d\n", no, uniqFile.Size, len(uniqFile.list), uniqFile.TotalSize)
 			for _, path := range uniqFile.list {
 				fmt.Printf("    - %s\n", path)
@@ -174,6 +174,12 @@ func displayDuplicateFiles(duplicateFileMap DuplicateFileMap, accessDeniedCount,
 			no++
 		}
 	}
+
+	log.WithFields(log.Fields{
+		"total_file_count":         totalFileCount,
+		"access_denied_file_count": accessDeniedFileCount,
+		"duplicate_group_count":    no - 1,
+	}).Info("result")
 }
 
 func getSortedValues(duplicateFileMap DuplicateFileMap, sortBy int) []*UniqFile {

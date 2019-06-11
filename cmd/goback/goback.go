@@ -89,7 +89,6 @@ func main() {
 	if err = b.Start(); err != nil {
 		log.Error(err)
 	}
-
 }
 
 func printHelp() {

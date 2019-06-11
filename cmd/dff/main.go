@@ -5,7 +5,6 @@ import (
 	log "github.com/sirupsen/logrus"
 	"github.com/spf13/pflag"
 	"os"
-	"runtime"
 )
 
 var fs *pflag.FlagSet
@@ -15,24 +14,17 @@ func main() {
 
 	// Handle options
 	dirs := fs.StringArrayP("dir", "d", []string{}, "target directories to search duplicate files")
-	cpu := fs.Int("cpu", 0, "CPU Count to use")
-	minFileCount := fs.IntP("min-count", "c", 3, "Minimum file count to find")
-	minFileSize := fs.Int64P("min-size", "s", 100, "Minimum file size to find")
+	cpu := fs.Int("cpu", 0, "CPU count")
+	minNumOfFilesInFileGroup := fs.IntP("min-count", "c", 5, "Minimum number of files in file group")
+	minFileSize := fs.Int64P("min-size", "s", 1024*10e3, "Minimum file size (Byte)")
 	verbose := fs.BoolP("verbose", "v", false, "Verbose")
 	sortBy := fs.StringP("sort", "r", "total", "Sort by [size|total|count]")
 
 	fs.Usage = printHelp
 	_ = fs.Parse(os.Args[1:])
 
-	if *verbose {
-		log.SetLevel(log.DebugLevel)
-	}
-
-	if *cpu == 0 {
-		runtime.GOMAXPROCS(runtime.NumCPU())
-	}
-
-	duplicateFileFinder := dff.NewDuplicateFileFinder(*dirs, *minFileCount, *minFileSize, *sortBy)
+	duplicateFileFinder := dff.NewDuplicateFileFinder(*dirs, *minNumOfFilesInFileGroup, *minFileSize, *sortBy)
+	duplicateFileFinder.Init(*verbose, *cpu)
 	err := duplicateFileFinder.Start()
 	if err != nil {
 		log.Error(err)

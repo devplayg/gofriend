@@ -216,6 +216,17 @@ func getSortedValues(duplicateFileMap DuplicateFileMap, sortBy int) []*UniqFile 
 	return list
 }
 
+func InitLogger(verbose bool) {
+	log.SetFormatter(&log.TextFormatter{
+		DisableColors: true,
+		FullTimestamp: true,
+	})
+	if verbose {
+		log.SetLevel(log.DebugLevel)
+	}
+
+}
+
 // https://programming.guide/go/formatting-byte-size-to-human-readable-format.html
 func ByteCountDecimal(b int64) string {
 	const unit = 1000

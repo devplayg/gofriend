@@ -28,11 +28,11 @@ func NewDuplicateFileFinder(dirs []string, minNumOfFilesInFileGroup int, minFile
 	return &dff
 }
 
-func (d *DuplicateFileFinder) Init(verbose bool) {
-	if verbose {
-		log.SetLevel(log.DebugLevel)
-	}
-}
+//func (d *DuplicateFileFinder) Init(verbose bool) {
+//	if verbose {
+//		log.SetLevel(log.DebugLevel)
+//	}
+//}
 
 func (d *DuplicateFileFinder) Start() error {
 	absDirs, err := isReadableDirs(d.dirs)

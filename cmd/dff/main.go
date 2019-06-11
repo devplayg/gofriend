@@ -8,13 +8,13 @@ import (
 )
 
 var fs *pflag.FlagSet
+var version = "1.0.0"
 
 func main() {
 	fs = pflag.NewFlagSet("dff", pflag.ContinueOnError)
 
 	// Handle options
 	dirs := fs.StringArrayP("dir", "d", []string{}, "target directories to search duplicate files")
-	cpu := fs.Int("cpu", 0, "CPU count")
 	minNumOfFilesInFileGroup := fs.IntP("min-count", "c", 5, "Minimum number of files in file group")
 	minFileSize := fs.Int64P("min-size", "s", 1024*10e3, "Minimum file size (Byte)")
 	verbose := fs.BoolP("verbose", "v", false, "Verbose")
@@ -23,8 +23,13 @@ func main() {
 	fs.Usage = printHelp
 	_ = fs.Parse(os.Args[1:])
 
+	if len(*dirs) < 1 {
+		printHelp()
+		return
+	}
+
 	duplicateFileFinder := dff.NewDuplicateFileFinder(*dirs, *minNumOfFilesInFileGroup, *minFileSize, *sortBy)
-	duplicateFileFinder.Init(*verbose, *cpu)
+	duplicateFileFinder.Init(*verbose)
 	err := duplicateFileFinder.Start()
 	if err != nil {
 		log.Error(err)
@@ -40,8 +45,6 @@ func init() {
 }
 
 func printHelp() {
-	println("dff - Duplicate file finder")
-	println("dff [options]")
-	println("ex) backup -s /home/data -d /backup")
+	println("Duplicate file finder v" + version)
 	fs.PrintDefaults()
 }

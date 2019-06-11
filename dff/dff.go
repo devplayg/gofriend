@@ -4,7 +4,6 @@ import (
 	"encoding/hex"
 	"github.com/minio/highwayhash"
 	log "github.com/sirupsen/logrus"
-	"runtime"
 )
 
 func init() {
@@ -40,13 +39,9 @@ func NewDuplicateFileFinder(dirs []string, minNumOfFilesInFileGroup int, minFile
 	return &dff
 }
 
-func (d *DuplicateFileFinder) Init(verbose bool, cpu int) {
+func (d *DuplicateFileFinder) Init(verbose bool) {
 	if verbose {
 		log.SetLevel(log.DebugLevel)
-	}
-
-	if cpu == 0 {
-		runtime.GOMAXPROCS(runtime.NumCPU())
 	}
 }
 

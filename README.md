@@ -1,6 +1,6 @@
 # Utils
 
-### DFF
+### [DFF](./cmd/dff/README.md)
 
 Duplicate file finder in Go
 
@@ -8,7 +8,7 @@ Duplicate file finder in Go
 
 Backup data in go
 
-
 ### PerlBack
 
 Backup script in Perl
+

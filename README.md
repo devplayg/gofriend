@@ -6,7 +6,7 @@ Duplicate file finder in Go and Highwayhash
 
 ### GoBack
 
-Backup data in go
+Backup data in Go
 
 ### PerlBack
 

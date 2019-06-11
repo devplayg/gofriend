@@ -43,6 +43,13 @@ type UniqFile struct {
 	Count     int
 }
 
+func NewDuplicateFiles(size int64) *UniqFile {
+	return &UniqFile{
+		Size: size,
+		list: make([]string, 0),
+	}
+}
+
 // Sorting for UniqFile
 type UniqFiles []*UniqFile
 
@@ -63,10 +70,3 @@ func (s ByTotalSize) Less(i, j int) bool { return s.UniqFiles[i].TotalSize > s.U
 type ByCount struct{ UniqFiles }
 
 func (s ByCount) Less(i, j int) bool { return s.UniqFiles[i].Count > s.UniqFiles[j].Count }
-
-func NewDuplicateFiles(size int64) *UniqFile {
-	return &UniqFile{
-		Size: size,
-		list: make([]string, 0),
-	}
-}

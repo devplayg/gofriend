@@ -1,6 +1,8 @@
 # Duplicate File Finder
 
-중복 파일 검색
+중복 파일 검색 
+
+* 해시 알고리즘: [HighwayHash](https://github.com/google/highwayhash)
 
 ### 특정 디렉터리에서 중복 파일 찾기 
 

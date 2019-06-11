@@ -1,4 +1,6 @@
-## command 
+# Duplicate File Finder
+
+중복 파일들을 찾는 명령어
 
 ### 특정 디렉터리 안에서 중복파일 찾기 (하위 디렉토리 포함)
 

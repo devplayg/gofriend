@@ -1,7 +1,6 @@
 package dff
 
 import (
-	"hash"
 	"os"
 )
 
@@ -15,8 +14,6 @@ const (
 	JsonFormat = iota + 1
 	TextFormat
 )
-
-var highwayHash hash.Hash
 
 type FileDetail struct {
 	dir string

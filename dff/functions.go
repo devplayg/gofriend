@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"github.com/minio/highwayhash"
 	log "github.com/sirupsen/logrus"
+	"hash"
 	"io"
 	"os"
 	"path/filepath"
@@ -14,12 +15,7 @@ import (
 )
 
 func init() {
-	key := sha256.Sum256([]byte("Duplicate File Finder"))
-	h, err := highwayhash.New(key[:])
-	if err != nil {
-		panic(err)
-	}
-	highwayHash = h
+
 }
 
 func getSortValue(val string) int {
@@ -67,8 +63,8 @@ func isValidDir(dir string) error {
 	return nil
 }
 
-func generateFileKey(path string) ([32]byte, error) {
-	hash, err := getHighwayHash(path)
+func generateHashKeyOfFile(path string, highwayhash hash.Hash) ([32]byte, error) {
+	hash, err := getHighwayFileHash(highwayhash, path)
 	if err != nil {
 		return [32]byte{}, err
 	}
@@ -79,7 +75,7 @@ func generateFileKey(path string) ([32]byte, error) {
 	return key, nil
 }
 
-func getHighwayHash(path string) ([]byte, error) {
+func getHighwayFileHash(highwayHash hash.Hash, path string) ([]byte, error) {
 	file, err := os.Open(path)
 	if err != nil {
 		return nil, err
@@ -133,12 +129,18 @@ func searchDir(dir string, minFileSize int64, ch chan *FileMapDetail) error {
 
 func findDuplicateFiles(fileMap FileMap, minNumOfFilesInFileGroup int) (DuplicateFileMap, error) {
 	fileMapBySize := classifyFilesBySize(fileMap)
+
+	highwayHash, err := generateHighwayHashKey()
+	if err != nil {
+		return nil, err
+	}
+
 	duplicateFileMap := make(DuplicateFileMap)
 	for _, list := range fileMapBySize {
 		if len(list) < minNumOfFilesInFileGroup {
 			continue
 		}
-		updateDuplicateFileMap(duplicateFileMap, list)
+		updateDuplicateFileMap(duplicateFileMap, list, highwayHash)
 	}
 	return duplicateFileMap, nil
 }
@@ -154,10 +156,19 @@ func classifyFilesBySize(fileMap FileMap) FileMapBySize {
 	return fileMapBySize
 }
 
-func updateDuplicateFileMap(duplicateFileMap DuplicateFileMap, list []*FileDetail) {
+func generateHighwayHashKey() (hash.Hash, error) {
+	key := sha256.Sum256([]byte("Duplicate File Finder"))
+	highwayhash, err := highwayhash.New(key[:])
+	if err != nil {
+		return nil, err
+	}
+	return highwayhash, err
+}
+
+func updateDuplicateFileMap(duplicateFileMap DuplicateFileMap, list []*FileDetail, highwayHash hash.Hash) {
 	for _, fileDetail := range list {
 		path := filepath.Join(fileDetail.dir, fileDetail.f.Name())
-		key, err := generateFileKey(path)
+		key, err := generateHashKeyOfFile(path, highwayHash)
 		if err != nil {
 			log.Error(err)
 			continue

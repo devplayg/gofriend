@@ -2,6 +2,7 @@ package dff
 
 import (
 	log "github.com/sirupsen/logrus"
+	"time"
 )
 
 type DuplicateFileFinder struct {
@@ -25,7 +26,7 @@ func NewDuplicateFileFinder(dirs []string, minNumOfFilesInFileGroup int, minFile
 	return &dff
 }
 
-func (d *DuplicateFileFinder) Start() error {
+func (d *DuplicateFileFinder) Start(t time.Time) error {
 	absDirs, err := isReadableDirs(d.dirs)
 	if err != nil {
 		return err
@@ -47,9 +48,9 @@ func (d *DuplicateFileFinder) Start() error {
 	log.WithFields(log.Fields{
 		"number_of_files_scanned":               len(fileMap),
 		"duplicate_group_count":                 duplicateFileGroupCount,
-		"sort_by":                               d.sortBy,
 		"minimum_number_of_files_in_file_group": d.minNumOfFilesInFileGroup,
 		"min_file_size":                         d.minFileSize,
+		"running_time(sec)":                     time.Since(t).Seconds(),
 	}).Info("result")
 	return nil
 }

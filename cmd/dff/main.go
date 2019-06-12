@@ -6,14 +6,15 @@ import (
 	log "github.com/sirupsen/logrus"
 	"github.com/spf13/pflag"
 	"os"
+	"time"
 )
 
 var fs *pflag.FlagSet
-var version = "1.0.5"
+var version = "1.0.6"
 var duplicateFileFinder *dff.DuplicateFileFinder
 
 func main() {
-	err := duplicateFileFinder.Start()
+	err := duplicateFileFinder.Start(time.Now())
 	if err != nil {
 		log.Error(err)
 		return
@@ -41,6 +42,7 @@ func init() {
 	}
 
 	dff.InitLogger(*verbose)
+
 	duplicateFileFinder = dff.NewDuplicateFileFinder(*dirs, *minNumOfFilesInFileGroup, *minFileSize, *sortBy, *format)
 }
 

@@ -11,6 +11,11 @@ const (
 	SortByCount
 )
 
+const (
+	JsonFormat = iota + 1
+	TextFormat
+)
+
 var highwayHash hash.Hash
 
 type FileDetail struct {
@@ -37,7 +42,7 @@ type FileMapBySize map[int64][]*FileDetail
 type DuplicateFileMap map[[32]byte]*UniqFile
 
 type UniqFile struct {
-	list      []string
+	List      []string
 	Size      int64
 	TotalSize int64
 	Count     int
@@ -46,7 +51,7 @@ type UniqFile struct {
 func NewDuplicateFiles(size int64) *UniqFile {
 	return &UniqFile{
 		Size: size,
-		list: make([]string, 0),
+		List: make([]string, 0),
 	}
 }
 

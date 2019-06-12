@@ -1,7 +1,8 @@
 package dff
 
 import (
-	"encoding/hex"
+	"crypto/sha256"
+	"encoding/json"
 	"fmt"
 	"github.com/minio/highwayhash"
 	log "github.com/sirupsen/logrus"
@@ -13,29 +14,32 @@ import (
 )
 
 func init() {
-	key, err := hex.DecodeString("000102030405060708090A0B0C0D0E0FF0E0D0C0B0A090807060504030201000")
-	h, err := highwayhash.New(key)
+	key := sha256.Sum256([]byte("Duplicate File Finder"))
+	h, err := highwayhash.New(key[:])
 	if err != nil {
 		panic(err)
 	}
 	highwayHash = h
 }
 
-func getSortValue(sortBy string) int {
-	var sortValue int
-	sortBy = strings.TrimSpace(strings.ToLower(sortBy))
-	switch sortBy {
-	case "total":
-		sortValue = SortByTotalSize
-	case "size":
-		sortValue = SortBySize
-	case "count":
-		sortValue = SortByCount
-	default:
-		sortValue = SortByTotalSize
+func getSortValue(val string) int {
+	val = strings.TrimSpace(strings.ToLower(val))
+	if val == "size" {
+		return SortBySize
+	}
+	if val == "count" {
+		return SortByCount
 	}
 
-	return sortValue
+	return SortByTotalSize
+}
+
+func getFormatValue(val string) int {
+	val = strings.TrimSpace(strings.ToLower(val))
+	if val == "text" {
+		return TextFormat
+	}
+	return JsonFormat
 }
 
 func isReadableDirs(dirs []string) ([]string, error) {
@@ -52,7 +56,6 @@ func isReadableDirs(dirs []string) ([]string, error) {
 		}
 		absDirs = append(absDirs, absDir)
 	}
-
 	return absDirs, nil
 }
 
@@ -100,7 +103,7 @@ func collectFilesInDirs(dirs []string, minFileSize int64) (FileMap, error) {
 
 	fileMap := make(FileMap)
 	for i := 0; i < len(dirs); i++ {
-		filMapDetail := <-ch // Receive filemap from goroutine
+		filMapDetail := <-ch // Receive file map from goroutine
 		for path, fileDetail := range filMapDetail.fileMap {
 			fileMap[path] = fileDetail
 		}
@@ -113,7 +116,6 @@ func searchDir(dir string, minFileSize int64, ch chan *FileMapDetail) error {
 	log.Infof("collecting files in [%s]", dir)
 	fileMapDetail := NewFileMapDetail(dir)
 	defer func() {
-		//log.Debugf("finished searching files in [%s]", dir)
 		ch <- fileMapDetail
 	}()
 
@@ -122,10 +124,7 @@ func searchDir(dir string, minFileSize int64, ch chan *FileMapDetail) error {
 			log.Error(err)
 		}
 		if err == nil && !f.IsDir() && f != nil && f.Mode().IsRegular() && f.Size() >= minFileSize {
-			fileMapDetail.fileMap[path] = &FileDetail{
-				f:   f,
-				dir: filepath.Dir(path),
-			}
+			fileMapDetail.fileMap[path] = &FileDetail{filepath.Dir(path), f}
 		}
 		return nil
 	})
@@ -139,14 +138,12 @@ func findDuplicateFiles(fileMap FileMap, minNumOfFilesInFileGroup int) (Duplicat
 		if len(list) < minNumOfFilesInFileGroup {
 			continue
 		}
-
 		updateDuplicateFileMap(duplicateFileMap, list)
 	}
 	return duplicateFileMap, nil
 }
 
 func classifyFilesBySize(fileMap FileMap) FileMapBySize {
-	log.Debug("classifying files by size")
 	fileMapBySize := make(FileMapBySize)
 	for _, fileDetail := range fileMap {
 		if _, ok := fileMapBySize[fileDetail.f.Size()]; !ok {
@@ -154,7 +151,6 @@ func classifyFilesBySize(fileMap FileMap) FileMapBySize {
 		}
 		fileMapBySize[fileDetail.f.Size()] = append(fileMapBySize[fileDetail.f.Size()], fileDetail)
 	}
-
 	return fileMapBySize
 }
 
@@ -170,29 +166,28 @@ func updateDuplicateFileMap(duplicateFileMap DuplicateFileMap, list []*FileDetai
 		if _, ok := duplicateFileMap[key]; !ok {
 			duplicateFileMap[key] = NewDuplicateFiles(fileDetail.f.Size())
 		}
-		duplicateFileMap[key].list = append(duplicateFileMap[key].list, path)
+		duplicateFileMap[key].List = append(duplicateFileMap[key].List, path)
 		duplicateFileMap[key].TotalSize += fileDetail.f.Size()
 		duplicateFileMap[key].Count++
 	}
 }
 
-func displayDuplicateFiles(duplicateFileMap DuplicateFileMap, totalFileCount int, minNumOfFilesInFileGroup int, sortBy int) {
-	list := getSortedValues(duplicateFileMap, sortBy)
-	no := 1
+func outputFilesInTextFormat(list []*UniqFile) {
 	for _, uniqFile := range list {
-		if len(uniqFile.list) >= minNumOfFilesInFileGroup {
-			fmt.Printf("file_no=#%d, size=%dB, count=%d, total_size=%s\n", no, uniqFile.Size, len(uniqFile.list), ByteCountDecimal(uniqFile.TotalSize))
-			for _, path := range uniqFile.list {
-				fmt.Printf("    - %s\n", path)
-			}
-			no++
+		fmt.Printf("total_size=%s, size=%d, count=%d, \n", ByteCountDecimal(uniqFile.TotalSize), uniqFile.Size, len(uniqFile.List))
+		for _, path := range uniqFile.List {
+			fmt.Printf("\t%s\n", path)
 		}
 	}
+}
 
-	log.WithFields(log.Fields{
-		"total_file_count":      totalFileCount,
-		"duplicate_group_count": no - 1,
-	}).Info("result")
+func outputFilesInJsonFormat(list []*UniqFile) {
+	b, err := json.MarshalIndent(list, "", "    ")
+	if err != nil {
+		log.Error(err)
+		return
+	}
+	fmt.Println(string(b))
 }
 
 func getSortedValues(duplicateFileMap DuplicateFileMap, sortBy int) []*UniqFile {
@@ -201,18 +196,17 @@ func getSortedValues(duplicateFileMap DuplicateFileMap, sortBy int) []*UniqFile 
 		list = append(list, v)
 	}
 
-	// Sort by
-	switch sortBy {
-	case SortByCount:
+	if sortBy == SortByCount {
 		sort.Sort(ByCount{list})
-	case SortBySize:
-		sort.Sort(BySize{list})
-	case SortByTotalSize:
-		sort.Sort(ByTotalSize{list})
-	default:
-		sort.Sort(ByTotalSize{list})
+		return list
 	}
 
+	if sortBy == SortBySize {
+		sort.Sort(BySize{list})
+		return list
+	}
+
+	sort.Sort(ByTotalSize{list})
 	return list
 }
 
@@ -221,10 +215,10 @@ func InitLogger(verbose bool) {
 		DisableColors: true,
 		FullTimestamp: true,
 	})
+	log.SetOutput(os.Stdout)
 	if verbose {
 		log.SetLevel(log.DebugLevel)
 	}
-
 }
 
 // https://programming.guide/go/formatting-byte-size-to-human-readable-format.html

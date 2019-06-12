@@ -9,7 +9,7 @@ import (
 )
 
 var fs *pflag.FlagSet
-var version = "1.0.3"
+var version = "1.0.5"
 var duplicateFileFinder *dff.DuplicateFileFinder
 
 func main() {
@@ -30,6 +30,7 @@ func init() {
 	minFileSize := fs.Int64P("min-size", "s", 1e6, "Minimum file size (Byte)")
 	verbose := fs.BoolP("verbose", "v", false, "Verbose")
 	sortBy := fs.StringP("sort", "r", "total", "Sort by [size | total | count]")
+	format := fs.StringP("format", "f", "json", "Output format [json | text]")
 	fs.Usage = printHelp
 	_ = fs.Parse(os.Args[1:])
 
@@ -40,7 +41,7 @@ func init() {
 	}
 
 	dff.InitLogger(*verbose)
-	duplicateFileFinder = dff.NewDuplicateFileFinder(*dirs, *minNumOfFilesInFileGroup, *minFileSize, *sortBy)
+	duplicateFileFinder = dff.NewDuplicateFileFinder(*dirs, *minNumOfFilesInFileGroup, *minFileSize, *sortBy, *format)
 }
 
 func printHelp() {

@@ -61,12 +61,14 @@ func (d *DuplicateFileFinder) displayDuplicateFileGroups(duplicateFileMap Duplic
 		}
 	}
 	list := getSortedValues(duplicateFileMap, d.sortBy)
-	duplicateFileGroupCount := len(list)
+	if len(list) < 1 {
+		return 0
+	}
 
 	if d.format == TextFormat {
 		outputFilesInTextFormat(list)
-		return duplicateFileGroupCount
+		return len(list)
 	}
 	outputFilesInJsonFormat(list)
-	return duplicateFileGroupCount
+	return len(list)
 }

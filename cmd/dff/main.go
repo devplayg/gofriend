@@ -10,7 +10,7 @@ import (
 )
 
 var fs *pflag.FlagSet
-var version = "1.0.6"
+var version = "1.0.7"
 var duplicateFileFinder *dff.DuplicateFileFinder
 
 func main() {

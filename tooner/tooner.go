@@ -32,8 +32,8 @@ func (w *WebtoonViewer) Start() error {
 		natsort.Sort(list)
 		content := getContent(list, w.indexFileName)
 		title := getTitle(w.dir, dir)
-		nav := fmt.Sprintf("<h3>%s</h3>", title)
-		content = nav + "<hr>" + content + "<hr>" + nav
+		nav := fmt.Sprintf("%s", title)
+		content = nav + "" + content + "" + nav
 		outputFile := filepath.Join(dir, w.indexFileName)
 		err := ioutil.WriteFile(outputFile, []byte(wrapHtml(content)), 0644)
 		if err != nil {

@@ -9,7 +9,7 @@ import (
 
 const (
 	appName    = "Tooner"
-	appVersion = "1.0"
+	appVersion = "1.0.1"
 )
 
 var targetDir string
@@ -32,7 +32,6 @@ func init() {
 	_ = fs.Parse(os.Args[1:])
 
 	if len(*dir) < 1 {
-		fs.Usage()
 		os.Exit(1)
 	}
 	targetDir = *dir

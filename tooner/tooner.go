@@ -33,7 +33,7 @@ func (w *WebtoonViewer) Start() error {
 		content := getContent(list, w.indexFileName)
 		title := getTitle(w.dir, dir)
 		nav := fmt.Sprintf("%s", title)
-		content = nav + "" + content + "" + nav
+		content = nav + content + nav
 		outputFile := filepath.Join(dir, w.indexFileName)
 		err := ioutil.WriteFile(outputFile, []byte(wrapHtml(content)), 0644)
 		if err != nil {

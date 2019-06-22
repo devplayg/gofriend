@@ -52,7 +52,7 @@ func getContent(list []string, indexFileName string) string {
 	if len(folder) > 0 {
 		folder = "<ul>" + folder + "</ul>"
 	}
-	return folder + content
+	return folder + "<div class='images'>" + content + "</div>"
 }
 
 func getTitle(rootDir, dir string) string {
@@ -74,7 +74,8 @@ func getTitle(rootDir, dir string) string {
 func wrapHtml(content string) string {
 	html := `<!DOCTYPE html><html lang="en-US"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1">
 <style>
-body {olor: #555555; line-height:0px}
+body {olor: #555555; }
+.images { line-height:0px }
 a:link{color:#0366d6; text-decoration:none}
 a:visited{color:#0366d6;}
 a:hover{color: #0366d6; text-decoration:underline}

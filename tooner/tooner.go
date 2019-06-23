@@ -28,18 +28,25 @@ func (w *WebtoonViewer) Start() error {
 		panic(err)
 	}
 
-	for dir, list := range fileMap {
+	dirs := make([]string, 0, len(fileMap))
+	for key := range fileMap {
+		dirs = append(dirs, key)
+	}
+	natsort.Sort(dirs)
+
+	for idx, dir := range dirs {
+		list := fileMap[dir]
 		natsort.Sort(list)
-		content := getContent(list, w.indexFileName)
-		title := getTitle(w.dir, dir)
-		nav := fmt.Sprintf("%s", title)
-		content = nav + content + nav
+		prev, next := getPrevNextDir(w.dir, dirs, idx)
+		position, nav := getNavigation(list, w.dir, dir, prev, next)
+		folders, content := getContent(list, w.indexFileName)
 		outputFile := filepath.Join(dir, w.indexFileName)
-		err := ioutil.WriteFile(outputFile, []byte(wrapHtml(content)), 0644)
+		err := ioutil.WriteFile(outputFile, []byte(wrapHtml(folders, content, position, nav)), 0644)
 		if err != nil {
 			panic(err)
 		}
 		fmt.Printf("%s is created.\n", outputFile)
 	}
+
 	return nil
 }

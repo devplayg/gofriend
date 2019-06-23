@@ -9,7 +9,7 @@ import (
 
 const (
 	appName    = "Tooner"
-	appVersion = "1.0.2"
+	appVersion = "1.0.5"
 )
 
 var targetDir string

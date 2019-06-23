@@ -36,56 +36,125 @@ func getFileMap(targetDir, indexFileName string) (FileMap, error) {
 	return fileMap, err
 }
 
-func getContent(list []string, indexFileName string) string {
+func getContent(list []string, outputFile string) (string, string) {
 	var content string
 	var folder string
-	for _, f := range list {
-		//matched, err := regexp.Match(`(jpeg|)$`, []byte(`seafood`))
-		matched, _ := regexp.MatchString(`\.(jpg|jpeg|gif|bmp|png)$`, strings.ToLower(f))
+
+	for _, name := range list {
+		matched, _ := regexp.MatchString(`\.(jpg|jpeg|gif|bmp|png)$`, strings.ToLower(name))
 
 		if matched { // is image
-			content += fmt.Sprintf("<div><img src='%s'></div>", f)
+			content += fmt.Sprintf("<img src='%s' class='toon'>", name)
 			continue
 		}
-		folder += fmt.Sprintf("<li><a href='%s/%s'>[%s]</a></li>", f, indexFileName, f)
+
+		folder += fmt.Sprintf("<li><a href='%s/%s'>[%s]</a></li>", name, outputFile, name)
 	}
 	if len(folder) > 0 {
 		folder = "<ul>" + folder + "</ul>"
 	}
-	return folder + "<div class='images'>" + content + "</div>"
+	return folder, content
 }
 
-func getTitle(rootDir, dir string) string {
-	parentDir, _ := filepath.Abs(filepath.Join(rootDir, ".."))
+func getNavigation(list []string, rootDir, dir, prev, next string) (string, string) {
+	parentDir := getParentDir(rootDir)
+
 	if rootDir == dir {
-		return filepath.Base(rootDir)
+		return filepath.Base(rootDir), ""
 	}
 
 	str := strings.TrimPrefix(dir, parentDir+string(os.PathSeparator))
 	arr := strings.Split(str, string(os.PathSeparator))
-	var title = arr[len(arr)-1]
+	var nav = arr[len(arr)-1]
 	for i := len(arr) - 2; i >= 0; i-- {
 		path := strings.Repeat("../", len(arr)-1-i)
-		title = fmt.Sprintf("<a href='%sindex.html'>%s</a> &gt; ", path, arr[i]) + title
+		nav = fmt.Sprintf("<a href='%sindex.html'>%s</a> &gt; ", path, arr[i]) + nav
 	}
-	return title
+
+	return nav, prev + "&nbsp;&nbsp;" + next
 }
 
-func wrapHtml(content string) string {
-	html := `<!DOCTYPE html><html lang="en-US"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1">
-<style>
-body {olor: #555555; }
-.images { line-height:0px }
-a:link{color:#0366d6; text-decoration:none}
-a:visited{color:#0366d6;}
-a:hover{color: #0366d6; text-decoration:underline}
-a:active{color: #0366d6 ;}
-</style>
+func getParentDir(dir string) string {
+	parentDir, _ := filepath.Abs(filepath.Join(dir, ".."))
+	return parentDir
+}
+
+func wrapHtml(folders, content, position, nav string) string {
+	html := `<!DOCTYPE html>
+<html lang="en-US">
+<head>
+	<meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1">
+	
+	<style>
+		body {color: #555555;}
+		.position {
+			display:block;
+		}
+		.nav {
+			font-size:1.3rem;
+			text-align:center;
+		}
+		.content {
+			text-align:center;
+			display:block;
+		}
+		.images { line-height:0px;  display: inline-block; }
+		.toon {
+		  display:block;
+		  max-width: 100%%; height:auto;
+		}
+		a:link{color:#0366d6; text-decoration:none}
+		a:visited{color:#0366d6;}
+		a:hover{color: #0366d6; text-decoration:underline;}
+		a:active{color: #0366d6 ;}
+	</style>
 </head>
 <body>
-`
-	html += content + `
+<div class="position">%s</div>
+<div class="nav">%s</div>
+<div class="folders">%s</div>
+<div class="content"><div class="images">%s</div></div>
+<div class="nav">%s</div>
+<div class="position">%s</div>
 </body>
-</html>`
+</html>
+`
+	html = fmt.Sprintf(html, position, nav, folders, content, nav, position)
+	html = strings.ReplaceAll(html, "\n", "")
 	return html
+}
+
+func getPrevNextDir(rootDir string, dirs []string, idx int) (string, string) {
+	prevIdx := idx - 1
+	nextIdx := idx + 1
+	if nextIdx > len(dirs)-1 {
+		nextIdx = -1
+	}
+
+	var prev, next string
+	if prevIdx > 0 {
+		prev = dirs[prevIdx]
+	}
+	if nextIdx > 0 {
+		next = dirs[nextIdx]
+	}
+
+	parentDir := getParentDir(dirs[idx])
+	if getParentDir(prev) != parentDir {
+		prev = ""
+	}
+	if getParentDir(next) != parentDir {
+		next = ""
+	}
+
+	if len(prev) > 0 {
+		prevBase := filepath.Base(prev)
+		prev = fmt.Sprintf("<a href='../%s/index.html'>%s</a>", prevBase, "Prev")
+	}
+
+	if len(next) > 0 {
+		nextBase := filepath.Base(next)
+		next = fmt.Sprintf("<a href='../%s/index.html'>%s</a>", nextBase, "Next")
+	}
+	return prev, next
 }

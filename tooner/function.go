@@ -91,11 +91,8 @@ body{color: #555555;}
 .content{text-align:center; display:block; }
 .images{line-height:0px;  display: inline-block; }
 img{display:block; max-width: 100%%; height:auto;}
-ul{list-style-type: none;  flex-wrap: wrap;
-  display: flex;}
-ul li {
-  flex: 1 0 10%%;
-}
+ul{list-style-type:none; flex-wrap:wrap; display: flex;}
+ul li {flex: 1 0 10%%;}
 a:link{color:#0366d6; text-decoration:none}
 a:visited{color:#0366d6;}
 a:hover{color: #0366d6; text-decoration:underline;}

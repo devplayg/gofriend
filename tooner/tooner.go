@@ -38,7 +38,7 @@ func (w *WebtoonViewer) Start() error {
 		list := fileMap[dir]
 		natsort.Sort(list)
 		prev, next := getPrevNextDir(w.dir, dirs, idx)
-		position, nav := getNavigation(list, w.dir, dir, prev, next)
+		position, nav := getNavigation(w.dir, dir, prev, next)
 		folders, content := getContent(list, w.indexFileName)
 		outputFile := filepath.Join(dir, w.indexFileName)
 		err := ioutil.WriteFile(outputFile, []byte(wrapHtml(folders, content, position, nav)), 0644)

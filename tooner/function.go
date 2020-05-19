@@ -44,11 +44,11 @@ func getContent(list []string, outputFile string) (string, string) {
 		matched, _ := regexp.MatchString(`\.(jpg|jpeg|gif|bmp|png)$`, strings.ToLower(name))
 
 		if matched { // is image
-			content += fmt.Sprintf("<img src='%s' class='toon'>", name)
+			content += fmt.Sprintf("<img src='%s'>", name)
 			continue
 		}
 
-		folder += fmt.Sprintf("<li><a href='%s/%s'>[%s]</a></li>", name, outputFile, name)
+		folder += fmt.Sprintf("<li><a href='%s/%s'>%s</a></li>", name, outputFile, name)
 	}
 	if len(folder) > 0 {
 		folder = "<ul>" + folder + "</ul>"
@@ -56,7 +56,7 @@ func getContent(list []string, outputFile string) (string, string) {
 	return folder, content
 }
 
-func getNavigation(list []string, rootDir, dir, prev, next string) (string, string) {
+func getNavigation(rootDir, dir, prev, next string) (string, string) {
 	parentDir := getParentDir(rootDir)
 
 	if rootDir == dir {
@@ -71,7 +71,7 @@ func getNavigation(list []string, rootDir, dir, prev, next string) (string, stri
 		nav = fmt.Sprintf("<a href='%sindex.html'>%s</a> &gt; ", path, arr[i]) + nav
 	}
 
-	return nav, prev + "&nbsp;&nbsp;" + next
+	return nav, prev + next
 }
 
 func getParentDir(dir string) string {
@@ -83,31 +83,25 @@ func wrapHtml(folders, content, position, nav string) string {
 	html := `<!DOCTYPE html>
 <html lang="en-US">
 <head>
-	<meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1">
-	
-	<style>
-		body {color: #555555;}
-		.position {
-			display:block;
-		}
-		.nav {
-			font-size:1.3rem;
-			text-align:center;
-		}
-		.content {
-			text-align:center;
-			display:block;
-		}
-		.images { line-height:0px;  display: inline-block; }
-		.toon {
-		  display:block;
-		  max-width: 100%%; height:auto;
-		}
-		a:link{color:#0366d6; text-decoration:none}
-		a:visited{color:#0366d6;}
-		a:hover{color: #0366d6; text-decoration:underline;}
-		a:active{color: #0366d6 ;}
-	</style>
+<meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1">
+<style>
+body{color: #555555;}
+.position{display:block; }
+.nav{font-size:1.3rem; text-align:center; }
+.content{text-align:center; display:block; }
+.images{line-height:0px;  display: inline-block; }
+img{display:block; max-width: 100%%; height:auto;}
+ul{list-style-type: none;  flex-wrap: wrap;
+  display: flex;}
+ul li {
+  flex: 1 0 10%%;
+}
+a:link{color:#0366d6; text-decoration:none}
+a:visited{color:#0366d6;}
+a:hover{color: #0366d6; text-decoration:underline;}
+a:active{color: #0366d6;}
+.next{margin-left:7px;}
+</style>
 </head>
 <body>
 <div class="position">%s</div>
@@ -154,7 +148,7 @@ func getPrevNextDir(rootDir string, dirs []string, idx int) (string, string) {
 
 	if len(next) > 0 {
 		nextBase := filepath.Base(next)
-		next = fmt.Sprintf("<a href='../%s/index.html'>%s</a>", nextBase, "Next")
+		next = fmt.Sprintf("<a href='../%s/index.html' class='next'>%s</a>", nextBase, "Next")
 	}
 	return prev, next
 }
